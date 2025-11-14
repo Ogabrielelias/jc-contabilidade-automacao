@@ -186,7 +186,7 @@ with st.container(border=True):
                 "O arquivo enviado não corresponde ao padrão esperado. "
                 "Certifique-se de utilizar o CSV original recebido por e-mail ou contate o suporte."
             )
-
+            st.stop()
     else:
         st.info("Envie um arquivo CSV para começar.")
 
