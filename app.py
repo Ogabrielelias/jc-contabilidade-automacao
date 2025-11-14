@@ -36,7 +36,7 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    .stAppToolbar, div[class*="_profileContainer"], [class*="_container"][class*="_viewerBadge"] {
+    .stAppToolbar, div[class*="_profileContainer"] {
         display: none !important;
     }
     </style>
