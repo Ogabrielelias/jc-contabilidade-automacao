@@ -33,6 +33,17 @@ st.set_page_config(
     page_title="JC Contabilidade - Postos Buffon", layout="wide"
 )
 
+st.markdown(
+    """
+    <style>
+    .stAppToolbar, [class*="_profileContainer"], [class*="_container"][class*="_viewerBadge"] {
+        display: none;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("🧾 JC Contabilidade - Postos Buffon")
 
 with st.container(border=True):
