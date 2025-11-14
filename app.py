@@ -194,360 +194,386 @@ if uploaded_file is not None and "df_final" in locals():
     with st.container(border=True):
         st.header("Resultados da extração")
 
-        tabs = st.tabs(["Dados Extraídos", "Proventos por filial"])
+        try:
 
-        with tabs[0]:
-            st.write(
-                "Tabela com todos os lançamentos extraídos do arquivo. "
-                "Você pode filtrar por **filial** e **tipo (Provento, Desconto)**."
-            )
-            df_table = df_final[
-                ["codigo", "descricao", "valor", "nome", "filial", "cnpj", "digito"]
-            ]
-            digito_map = {
-                "P": "Provento",
-                "D": "Desconto",
-            }
-            df_table["digito"] = df_table["digito"].apply(
-                lambda x: digito_map.get(x, x)
-            )
-            df_table = df_table.sort_values(
-                by=["filial", "digito"],
-                key=lambda col: (
-                    col.map(sort_filial) if col.name == "filial" else col.map(sort_tipo)
-                ),
-            )
+            tabs = st.tabs(["Dados Extraídos", "Proventos por filial"])
 
-            col1, col2 = st.columns(2)
+            with tabs[0]:
+                st.write(
+                    "Tabela com todos os lançamentos extraídos do arquivo. "
+                    "Você pode filtrar por **filial** e **tipo (Provento, Desconto)**."
+                )
+                df_table = df_final[
+                    ["codigo", "descricao", "valor", "nome", "filial", "cnpj", "digito"]
+                ]
+                digito_map = {
+                    "P": "Provento",
+                    "D": "Desconto",
+                }
+                df_table["digito"] = df_table["digito"].apply(
+                    lambda x: digito_map.get(x, x)
+                )
+                df_table = df_table.sort_values(
+                    by=["filial", "digito"],
+                    key=lambda col: (
+                        col.map(sort_filial)
+                        if col.name == "filial"
+                        else col.map(sort_tipo)
+                    ),
+                )
 
-            with col1:
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    filiais_opcoes = sorted(
+                        df_table["filial"].dropna().unique(), key=sort_filial
+                    )
+                    filiais_selecionadas = st.multiselect(
+                        "Filtrar por Filial:",
+                        filiais_opcoes,
+                        default=None,
+                        placeholder="Selecione uma ou mais filiais",
+                    )
+
+                with col2:
+                    tipos_opcoes = sorted(
+                        df_table["digito"].dropna().unique(), key=sort_tipo
+                    )
+                    tipos_selecionados = st.multiselect(
+                        "Filtrar por Tipo:",
+                        tipos_opcoes,
+                        default=None,
+                        placeholder="Selecione um ou mais tipos",
+                    )
+
+                df_filtrado = df_table.copy()
+
+                if len(filiais_selecionadas) > 0:
+                    df_filtrado = df_filtrado[
+                        df_filtrado["filial"].isin(filiais_selecionadas)
+                    ]
+
+                if len(tipos_selecionados) > 0:
+                    df_filtrado = df_filtrado[
+                        df_filtrado["digito"].isin(tipos_selecionados)
+                    ]
+
+                df_filtrado = df_filtrado.rename(
+                    columns={
+                        "codigo": "Código",
+                        "descricao": "Descrição",
+                        "valor": "Valor",
+                        "nome": "Nome",
+                        "filial": "Filial",
+                        "cnpj": "CNPJ",
+                        "digito": "Tipo",
+                    }
+                )
+
+                df_filtrado = df_filtrado[
+                    ["Filial", "Código", "Descrição", "Valor", "Tipo", "Nome", "CNPJ"]
+                ]
+
+                df_filtrado.reset_index(drop=True, inplace=True)
+
+                st.dataframe(df_filtrado, use_container_width=True)
+
+            # ===============================
+            # 🔹 SOMA POR FILIAL (considerando filtro e dígito D)
+            # ===============================
+            with tabs[1]:
+                st.markdown(
+                    "Aqui você vê a soma dos **proventos** por filial e também pode selecionar "
+                    "**códigos específicos** de proventos e descontos para diminuir do total de proventos."
+                )
+                df_soma = (
+                    df_final[df_final["digito"] == "P"]
+                    .groupby("filial", as_index=False)["valor_num"]
+                    .sum()
+                )
+
+                df_soma["total_proventos"] = df_soma["valor_num"].apply(
+                    lambda x: f"R${x:,.2f}".replace(",", "X")
+                    .replace(".", ",")
+                    .replace("X", ".")
+                )
+
+                todos_codigos = sorted(
+                    df_final["codigo"].astype(str).dropna().unique(),
+                    key=lambda x: int(x),
+                )
+
+                codigos_P_padrao = ["17", "130", "169", "170", "171", "173", "907"]
+                codigos_D_padrao = ["3", "6", "19", "22", "23", "911", "938"]
+
+                codigos_P_existentes = (
+                    df_final[df_final["digito"] == "P"]["codigo"]
+                    .astype(str)
+                    .unique()
+                    .tolist()
+                )
+                codigos_D_existentes = (
+                    df_final[df_final["digito"] == "D"]["codigo"]
+                    .astype(str)
+                    .unique()
+                    .tolist()
+                )
+
+                # Criar código – descrição apenas dentro do tipo correto
+                df_final["codigo_desc"] = (
+                    df_final["codigo"].astype(str)
+                    + " – "
+                    + df_final["descricao"].astype(str)
+                )
+
+                codigo_map = dict(
+                    zip(df_final["codigo_desc"], df_final["codigo"].astype(str))
+                )
+
+                # 🔹 filtrar somente as opções de cada tipo
+                codigos_P_formatados = sorted(
+                    [c for c in codigo_map if codigo_map[c] in codigos_P_existentes],
+                    key=lambda x: int(x.split(" – ")[0]),
+                )
+
+                codigos_D_formatados = sorted(
+                    [c for c in codigo_map if codigo_map[c] in codigos_D_existentes],
+                    key=lambda x: int(x.split(" – ")[0]),
+                )
+
+                # Filtrar padrões que realmente existem no CSV
+                codigos_P_default_fmt = [
+                    c for c in codigos_P_formatados if codigo_map[c] in codigos_P_padrao
+                ]
+                codigos_D_default_fmt = [
+                    c for c in codigos_D_formatados if codigo_map[c] in codigos_D_padrao
+                ]
+
+                with st.expander(
+                    "Selecionar códigos de proventos e descontos para ajuste do total líquido"
+                ):
+                    st.write(
+                        "Os códigos listados abaixo permitem ajustar o cálculo do **total líquido** "
+                        "subtraindo valores específicos de proventos ou descontos. \n\n"
+                        f"Os códigos padrão utilizados são: **{', '.join(codigos_P_padrao)} de proventos** e **{', '.join(codigos_D_padrao)} de descontos**. "
+                        "Se algum deles não aparecer na lista, significa que **nenhuma filial utilizou esse código** "
+                        "no arquivo enviado. Ainda assim, você pode selecionar livremente qualquer código disponível "
+                        "para realizar o ajuste conforme necessário."
+                    )
+                    colP, colD = st.columns(2)
+
+                with colP:
+                    codigos_P_select_fmt = st.multiselect(
+                        "Códigos de proventos:",
+                        options=codigos_P_formatados,
+                        default=codigos_P_default_fmt,
+                    )
+                    # Converter "código – descrição" → código
+                    codigos_P_selecionados = [
+                        codigo_map[x] for x in codigos_P_select_fmt
+                    ]
+
+                with colD:
+                    codigos_D_select_fmt = st.multiselect(
+                        "Códigos de descontos:",
+                        options=codigos_D_formatados,
+                        default=codigos_D_default_fmt,
+                    )
+                    # Converter "código – descrição" → código
+                    codigos_D_selecionados = [
+                        codigo_map[x] for x in codigos_D_select_fmt
+                    ]
+
+                st.markdown(
+                    "<hr style='padding:4px 0 0 0;margin:0;'>", unsafe_allow_html=True
+                )
+
+                df_codigos_especiais = (
+                    df_final[
+                        (
+                            (df_final["digito"] == "P")
+                            & (
+                                df_final["codigo"]
+                                .astype(str)
+                                .isin(codigos_P_selecionados)
+                            )
+                        )
+                        | (
+                            (df_final["digito"] == "D")
+                            & (
+                                df_final["codigo"]
+                                .astype(str)
+                                .isin(codigos_D_selecionados)
+                            )
+                        )
+                    ]
+                    .groupby("filial", as_index=False)["valor_num"]
+                    .sum()
+                )
+
+                df_codigos_especiais.rename(
+                    columns={"valor_num": "total_codigos_especiais"}, inplace=True
+                )
+
+                df_soma = df_soma.merge(df_codigos_especiais, on="filial", how="left")
+
+                df_soma["total_codigos_especiais"] = df_soma[
+                    "total_codigos_especiais"
+                ].apply(
+                    lambda x: (
+                        f"R${x:,.2f}".replace(",", "X")
+                        .replace(".", ",")
+                        .replace("X", ".")
+                        if pd.notnull(x)
+                        else "R$0,00"
+                    )
+                )
+
+                # Criar coluna numérica real para cálculo
+                df_soma["total_proventos_num"] = (
+                    df_soma["total_proventos"]
+                    .str.replace("R$", "")
+                    .str.replace(".", "")
+                    .str.replace(",", ".")
+                    .astype(float)
+                )
+                df_soma["total_codigos_especiais_num"] = (
+                    df_soma["total_codigos_especiais"]
+                    .str.replace("R$", "")
+                    .str.replace(".", "")
+                    .str.replace(",", ".")
+                    .astype(float)
+                )
+
+                # Novo total líquido = Proventos – Códigos Selecionados
+                df_soma["total_liquido_num"] = (
+                    df_soma["total_proventos_num"]
+                    - df_soma["total_codigos_especiais_num"]
+                )
+
+                # Converter para formato monetário
+                df_soma["total_liquido"] = df_soma["total_liquido_num"].apply(
+                    lambda x: f"R${x:,.2f}".replace(",", "X")
+                    .replace(".", ",")
+                    .replace("X", ".")
+                )
+
+                # Selecionar colunas finais
+                df_soma = df_soma[
+                    [
+                        "filial",
+                        "total_proventos",
+                        "total_codigos_especiais",
+                        "total_liquido",
+                    ]
+                ]
+
+                df_soma = df_soma.sort_values(
+                    by="filial", key=lambda col: col.map(sort_filial)
+                )
+
                 filiais_opcoes = sorted(
-                    df_table["filial"].dropna().unique(), key=sort_filial
+                    df_soma["filial"].dropna().unique(), key=sort_filial
                 )
                 filiais_selecionadas = st.multiselect(
                     "Filtrar por Filial:",
                     filiais_opcoes,
                     default=None,
                     placeholder="Selecione uma ou mais filiais",
+                    key="soma_filiais",
                 )
 
-            with col2:
-                tipos_opcoes = sorted(
-                    df_table["digito"].dropna().unique(), key=sort_tipo
+                df_filtrado = df_soma.copy()
+
+                if len(filiais_selecionadas) > 0:
+                    df_filtrado = df_filtrado[
+                        df_filtrado["filial"].isin(filiais_selecionadas)
+                    ]
+
+                df_filtrado = df_filtrado.rename(
+                    columns={
+                        "filial": "Filial",
+                        "total_proventos": "Total proventos",
+                        "total_codigos_especiais": "Total proventos e descontos selecionados",
+                        "total_liquido": "Total líquido (Proventos – Selecionados)",
+                    }
                 )
-                tipos_selecionados = st.multiselect(
-                    "Filtrar por Tipo:",
-                    tipos_opcoes,
-                    default=None,
-                    placeholder="Selecione um ou mais tipos",
+                df_filtrado.reset_index(drop=True, inplace=True)
+
+                st.dataframe(df_filtrado, use_container_width=True)
+
+                st.markdown(
+                    "<hr style='padding:4px 0 0 0;margin:0;'>", unsafe_allow_html=True
                 )
 
-            df_filtrado = df_table.copy()
+                # Garantir que estamos usando a versão filtrada
+                df_metricas = df_filtrado.copy()
 
-            if len(filiais_selecionadas) > 0:
-                df_filtrado = df_filtrado[
-                    df_filtrado["filial"].isin(filiais_selecionadas)
-                ]
-
-            if len(tipos_selecionados) > 0:
-                df_filtrado = df_filtrado[
-                    df_filtrado["digito"].isin(tipos_selecionados)
-                ]
-
-            df_filtrado = df_filtrado.rename(
-                columns={
-                    "codigo": "Código",
-                    "descricao": "Descrição",
-                    "valor": "Valor",
-                    "nome": "Nome",
-                    "filial": "Filial",
-                    "cnpj": "CNPJ",
-                    "digito": "Tipo",
-                }
-            )
-
-            df_filtrado = df_filtrado[
-                ["Filial", "Código", "Descrição", "Valor", "Tipo", "Nome", "CNPJ"]
-            ]
-
-            df_filtrado.reset_index(drop=True, inplace=True)
-
-            st.dataframe(df_filtrado, use_container_width=True)
-
-        # ===============================
-        # 🔹 SOMA POR FILIAL (considerando filtro e dígito D)
-        # ===============================
-        with tabs[1]:
-            st.markdown(
-                "Aqui você vê a soma dos **proventos** por filial e também pode selecionar "
-                "**códigos específicos** de proventos e descontos para diminuir do total de proventos."
-            )
-            df_soma = (
-                df_final[df_final["digito"] == "P"]
-                .groupby("filial", as_index=False)["valor_num"]
-                .sum()
-            )
-
-            df_soma["total_proventos"] = df_soma["valor_num"].apply(
-                lambda x: f"R${x:,.2f}".replace(",", "X")
-                .replace(".", ",")
-                .replace("X", ".")
-            )
-
-            todos_codigos = sorted(
-                df_final["codigo"].astype(str).dropna().unique(), key=lambda x: int(x)
-            )
-
-            codigos_P_padrao = ["17", "130", "169", "170", "171", "173", "907"]
-            codigos_D_padrao = ["3", "6", "19", "22", "23", "911", "938"]
-
-            codigos_P_existentes = (
-                df_final[df_final["digito"] == "P"]["codigo"]
-                .astype(str)
-                .unique()
-                .tolist()
-            )
-            codigos_D_existentes = (
-                df_final[df_final["digito"] == "D"]["codigo"]
-                .astype(str)
-                .unique()
-                .tolist()
-            )
-
-            # Criar código – descrição apenas dentro do tipo correto
-            df_final["codigo_desc"] = (
-                df_final["codigo"].astype(str)
-                + " – "
-                + df_final["descricao"].astype(str)
-            )
-
-            codigo_map = dict(
-                zip(df_final["codigo_desc"], df_final["codigo"].astype(str))
-            )
-
-            # 🔹 filtrar somente as opções de cada tipo
-            codigos_P_formatados = sorted(
-                [c for c in codigo_map if codigo_map[c] in codigos_P_existentes],
-                key=lambda x: int(x.split(" – ")[0]),
-            )
-
-            codigos_D_formatados = sorted(
-                [c for c in codigo_map if codigo_map[c] in codigos_D_existentes],
-                key=lambda x: int(x.split(" – ")[0]),
-            )
-
-            # Filtrar padrões que realmente existem no CSV
-            codigos_P_default_fmt = [
-                c for c in codigos_P_formatados if codigo_map[c] in codigos_P_padrao
-            ]
-            codigos_D_default_fmt = [
-                c for c in codigos_D_formatados if codigo_map[c] in codigos_D_padrao
-            ]
-
-            with st.expander(
-                "Selecionar códigos de proventos e descontos para ajuste do total líquido"
-            ):
-                st.write(
-                    "Os códigos listados abaixo permitem ajustar o cálculo do **total líquido** "
-                    "subtraindo valores específicos de proventos ou descontos. \n\n"
-                    f"Os códigos padrão utilizados são: **{', '.join(codigos_P_padrao)} de proventos** e **{', '.join(codigos_D_padrao)} de descontos**. "
-                    "Se algum deles não aparecer na lista, significa que **nenhuma filial utilizou esse código** "
-                    "no arquivo enviado. Ainda assim, você pode selecionar livremente qualquer código disponível "
-                    "para realizar o ajuste conforme necessário."
+                # Converter para números reais
+                df_metricas["total_proventos_num"] = (
+                    df_metricas["Total proventos"]
+                    .str.replace("R$", "")
+                    .str.replace(".", "")
+                    .str.replace(",", ".")
+                    .astype(float)
                 )
-                colP, colD = st.columns(2)
 
-            with colP:
-                codigos_P_select_fmt = st.multiselect(
-                    "Códigos de proventos:",
-                    options=codigos_P_formatados,
-                    default=codigos_P_default_fmt,
+                df_metricas["total_codigos_num"] = (
+                    df_metricas["Total proventos e descontos selecionados"]
+                    .str.replace("R$", "")
+                    .str.replace(".", "")
+                    .str.replace(",", ".")
+                    .astype(float)
                 )
-                # Converter "código – descrição" → código
-                codigos_P_selecionados = [codigo_map[x] for x in codigos_P_select_fmt]
 
-            with colD:
-                codigos_D_select_fmt = st.multiselect(
-                    "Códigos de descontos:",
-                    options=codigos_D_formatados,
-                    default=codigos_D_default_fmt,
+                df_metricas["total_liquido_num"] = (
+                    df_metricas["Total líquido (Proventos – Selecionados)"]
+                    .str.replace("R$", "")
+                    .str.replace(".", "")
+                    .str.replace(",", ".")
+                    .astype(float)
                 )
-                # Converter "código – descrição" → código
-                codigos_D_selecionados = [codigo_map[x] for x in codigos_D_select_fmt]
 
-            st.markdown(
-                "<hr style='padding:4px 0 0 0;margin:0;'>", unsafe_allow_html=True
-            )
+                # Cálculos
+                soma_total_proventos = df_metricas["total_proventos_num"].sum()
+                soma_total_codigos = df_metricas["total_codigos_num"].sum()
+                soma_total_liquido = df_metricas["total_liquido_num"].sum()
+                qtd_filiais = len(df_metricas)
 
-            df_codigos_especiais = (
-                df_final[
-                    (
-                        (df_final["digito"] == "P")
-                        & (df_final["codigo"].astype(str).isin(codigos_P_selecionados))
-                    )
-                    | (
-                        (df_final["digito"] == "D")
-                        & (df_final["codigo"].astype(str).isin(codigos_D_selecionados))
-                    )
-                ]
-                .groupby("filial", as_index=False)["valor_num"]
-                .sum()
-            )
-
-            df_codigos_especiais.rename(
-                columns={"valor_num": "total_codigos_especiais"}, inplace=True
-            )
-
-            df_soma = df_soma.merge(df_codigos_especiais, on="filial", how="left")
-
-            df_soma["total_codigos_especiais"] = df_soma[
-                "total_codigos_especiais"
-            ].apply(
-                lambda x: (
-                    f"R${x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                    if pd.notnull(x)
-                    else "R$0,00"
+                # Formatação
+                fmt = (
+                    lambda x: f"R${x:,.2f}".replace(",", "X")
+                    .replace(".", ",")
+                    .replace("X", ".")
                 )
-            )
 
-            # Criar coluna numérica real para cálculo
-            df_soma["total_proventos_num"] = (
-                df_soma["total_proventos"]
-                .str.replace("R$", "")
-                .str.replace(".", "")
-                .str.replace(",", ".")
-                .astype(float)
-            )
-            df_soma["total_codigos_especiais_num"] = (
-                df_soma["total_codigos_especiais"]
-                .str.replace("R$", "")
-                .str.replace(".", "")
-                .str.replace(",", ".")
-                .astype(float)
-            )
+                colA, colB, colC, colD = st.columns(4)
 
-            # Novo total líquido = Proventos – Códigos Selecionados
-            df_soma["total_liquido_num"] = (
-                df_soma["total_proventos_num"] - df_soma["total_codigos_especiais_num"]
-            )
+                colA.metric("Quantidade de filiais consideradas", qtd_filiais)
+                colB.metric("Soma total dos proventos", fmt(soma_total_proventos))
+                colC.metric(
+                    "Soma total das reduções selecionadas", fmt(soma_total_codigos)
+                )
+                colD.metric("Total líquido geral", fmt(soma_total_liquido))
 
-            # Converter para formato monetário
-            df_soma["total_liquido"] = df_soma["total_liquido_num"].apply(
-                lambda x: f"R${x:,.2f}".replace(",", "X")
-                .replace(".", ",")
-                .replace("X", ".")
-            )
+                # ===============================
+                # 🔹 DOWNLOADS
+                # ===============================
+                output = io.BytesIO()
 
-            # Selecionar colunas finais
-            df_soma = df_soma[
-                [
-                    "filial",
-                    "total_proventos",
-                    "total_codigos_especiais",
-                    "total_liquido",
-                ]
-            ]
+                with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                    df_soma.to_excel(writer, index=False, sheet_name="Soma por Filial")
 
-            df_soma = df_soma.sort_values(
-                by="filial", key=lambda col: col.map(sort_filial)
-            )
+                # Conteúdo do arquivo
+                xlsx_data = output.getvalue()
 
-            filiais_opcoes = sorted(
-                df_soma["filial"].dropna().unique(), key=sort_filial
-            )
-            filiais_selecionadas = st.multiselect(
-                "Filtrar por Filial:",
-                filiais_opcoes,
-                default=None,
-                placeholder="Selecione uma ou mais filiais",
-                key="soma_filiais",
-            )
-
-            df_filtrado = df_soma.copy()
-
-            if len(filiais_selecionadas) > 0:
-                df_filtrado = df_filtrado[
-                    df_filtrado["filial"].isin(filiais_selecionadas)
-                ]
-
-            df_filtrado = df_filtrado.rename(
-                columns={
-                    "filial": "Filial",
-                    "total_proventos": "Total proventos",
-                    "total_codigos_especiais": "Total proventos e descontos selecionados",
-                    "total_liquido": "Total líquido (Proventos – Selecionados)",
-                }
-            )
-            df_filtrado.reset_index(drop=True, inplace=True)
-
-            st.dataframe(df_filtrado, use_container_width=True)
-
-            st.markdown(
-                "<hr style='padding:4px 0 0 0;margin:0;'>", unsafe_allow_html=True
-            )
-
-            # Garantir que estamos usando a versão filtrada
-            df_metricas = df_filtrado.copy()
-
-            # Converter para números reais
-            df_metricas["total_proventos_num"] = (
-                df_metricas["Total proventos"]
-                .str.replace("R$", "")
-                .str.replace(".", "")
-                .str.replace(",", ".")
-                .astype(float)
-            )
-
-            df_metricas["total_codigos_num"] = (
-                df_metricas["Total proventos e descontos selecionados"]
-                .str.replace("R$", "")
-                .str.replace(".", "")
-                .str.replace(",", ".")
-                .astype(float)
-            )
-
-            df_metricas["total_liquido_num"] = (
-                df_metricas["Total líquido (Proventos – Selecionados)"]
-                .str.replace("R$", "")
-                .str.replace(".", "")
-                .str.replace(",", ".")
-                .astype(float)
-            )
-
-            # Cálculos
-            soma_total_proventos = df_metricas["total_proventos_num"].sum()
-            soma_total_codigos = df_metricas["total_codigos_num"].sum()
-            soma_total_liquido = df_metricas["total_liquido_num"].sum()
-            qtd_filiais = len(df_metricas)
-
-            # Formatação
-            fmt = (
-                lambda x: f"R${x:,.2f}".replace(",", "X")
-                .replace(".", ",")
-                .replace("X", ".")
-            )
-
-            colA, colB, colC, colD = st.columns(4)
-
-            colA.metric("Quantidade de filiais consideradas", qtd_filiais)
-            colB.metric("Soma total dos proventos", fmt(soma_total_proventos))
-            colC.metric("Soma total das reduções selecionadas", fmt(soma_total_codigos))
-            colD.metric("Total líquido geral", fmt(soma_total_liquido))
-
-            # ===============================
-            # 🔹 DOWNLOADS
-            # ===============================
-            output = io.BytesIO()
-
-            with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-                df_soma.to_excel(writer, index=False, sheet_name="Soma por Filial")
-
-            # Conteúdo do arquivo
-            xlsx_data = output.getvalue()
-
-            st.download_button(
-                label="📥 Baixar Soma por Filial",
-                data=xlsx_data,
-                file_name="soma_por_filial.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                st.download_button(
+                    label="📥 Baixar Soma por Filial",
+                    data=xlsx_data,
+                    file_name="soma_por_filial.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+        except Exception as e:
+            st.error(
+                "Ocorreu um erro ao processar os dados extraídos. Por favor, tente novamente ou contate o suporte."
             )
