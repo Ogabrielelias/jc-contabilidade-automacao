@@ -37,11 +37,8 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    .stAppToolbar {
-        display: none !important;
-    }
     .stMainBlockContainer {
-        padding-top: 1rem;
+        padding-top: 2rem;
     }
     </style>
     """,
