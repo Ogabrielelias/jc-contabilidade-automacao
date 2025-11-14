@@ -33,11 +33,22 @@ st.set_page_config(
     page_title="JC Contabilidade - Postos Buffon", layout="wide"
 )
 
+my_component = st.components.v1.declare_component(
+    "my_component",
+    path="./",
+)
+
+my_component()
+
+
 st.markdown(
     """
     <style>
-    .stAppToolbar, div[class*="profileContainer"] {
+    .stAppToolbar {
         display: none !important;
+    }
+    .stMainBlockContainer {
+        padding-top: 1rem;
     }
     </style>
     """,
