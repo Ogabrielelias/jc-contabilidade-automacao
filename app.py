@@ -36,7 +36,7 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    .stAppToolbar, div[class*="_profileContainer"] {
+    .stAppToolbar, ._profileContainer_gzau3_53 {
         display: none !important;
     }
     </style>
