@@ -30,10 +30,10 @@ def sort_tipo(value):
 
 
 st.set_page_config(
-    page_title="JC Contabilidade - Folha de salários Postos Buffon", layout="wide"
+    page_title="JC Contabilidade - Postos Buffon", layout="wide"
 )
 
-st.title("🧾 JC Contabilidade - Folha de salários Postos Buffon")
+st.title("🧾 JC Contabilidade - Postos Buffon")
 
 with st.container(border=True):
     st.header("Carregar tabela de salários")
