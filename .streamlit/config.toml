@@ -8,7 +8,7 @@ serverPort = 8501
  
 [theme]
 base = "light"
-primaryColor = '#DD3816'
+primaryColor = '#FF4000'
 backgroundColor = '#ffffffff'
 secondaryBackgroundColor = '#F2F2F2'
 textColor = '#31333F'
