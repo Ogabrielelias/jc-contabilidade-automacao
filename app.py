@@ -578,10 +578,11 @@ if uploaded_file is not None and "df_final" in locals():
                 xlsx_data = output.getvalue()
 
                 st.download_button(
-                    label="📥 Baixar Soma por Filial",
+                    label=":material/download: Baixar soma por filial",
                     data=xlsx_data,
                     file_name="soma_por_filial.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
                 )
         except Exception as e:
             st.error(
