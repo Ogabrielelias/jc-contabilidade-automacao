@@ -31,7 +31,6 @@ def sort_tipo(value):
 
 st.set_page_config(page_title="JC Contabilidade - Postos Buffon", layout="wide")
 
-st.button("🔄 Recarregar página", type="primary")
 st.markdown(
     """
     <style>
