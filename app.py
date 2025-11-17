@@ -29,26 +29,29 @@ def sort_tipo(value):
     return order.get(value, 99)
 
 
-st.set_page_config(
-    page_title="JC Contabilidade - Postos Buffon", layout="wide"
-)
+st.set_page_config(page_title="JC Contabilidade - Postos Buffon", layout="wide")
 
-
+st.button("🔄 Recarregar página", type="primary")
 st.markdown(
     """
     <style>
     .stMainBlockContainer {
-        padding-top: 2rem;
+      padding-top: 2rem;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      padding: 0 !important;
     }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.title("🧾 JC Contabilidade - Postos Buffon")
+st.title("JC Contabilidade")
+
+st.markdown("<hr style='padding:0;margin:16px 0;'>", unsafe_allow_html=True)
 
 with st.container(border=True):
-    st.header("Carregar tabela de salários")
+    st.header("Postos Buffon - Folha de Salários")
     st.write(
         "Envie aqui o arquivo **CSV original** recebido por e-mail."
         "O sistema faz a leitura automática do formato e extrai as informações contábeis."
@@ -191,16 +194,12 @@ with st.container(border=True):
                         & (df_final["1.4"].astype(str).isin(codigos_excluir))
                     )
                 ]
-
-            st.success("Normalização e extração concluídas ✅")
         except Exception as e:
             st.error(
                 "O arquivo enviado não corresponde ao padrão esperado. "
                 "Certifique-se de utilizar o CSV original recebido por e-mail ou contate o suporte."
             )
             st.stop()
-    else:
-        st.info("Envie um arquivo CSV para começar.")
 
 if uploaded_file is not None and "df_final" in locals():
     with st.container(border=True):
