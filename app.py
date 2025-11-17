@@ -232,7 +232,17 @@ if uploaded_file is not None and "df_final" in locals():
                     ),
                 )
 
-                col1, col2 = st.columns(2)
+                df_table["codigo_fmt"] = (
+                    df_table["codigo"].astype(str)
+                    + " – "
+                    + df_table["descricao"].astype(str)
+                )
+
+                codigo_map = dict(
+                    zip(df_table["codigo_fmt"], df_table["codigo"].astype(str))
+                )
+
+                col1, col2, col3 = st.columns(3)
 
                 with col1:
                     filiais_opcoes = sorted(
@@ -256,6 +266,23 @@ if uploaded_file is not None and "df_final" in locals():
                         placeholder="Selecione um ou mais tipos",
                     )
 
+                with col3:
+                    codigos_opcoes = sorted(
+                        df_table["codigo_fmt"].dropna().unique(),
+                        key=lambda x: int(x.split(" – ")[0]),
+                    )
+                    codigos_selecionados_fmt = st.multiselect(
+                        "Filtrar por Código:",
+                        codigos_opcoes,
+                        default=None,
+                        placeholder="Selecione um ou mais códigos",
+                    )
+
+                    # Converte "código – descrição" para código puro
+                    codigos_selecionados = [
+                        codigo_map[x] for x in codigos_selecionados_fmt
+                    ]
+
                 df_filtrado = df_table.copy()
 
                 if len(filiais_selecionadas) > 0:
@@ -266,6 +293,10 @@ if uploaded_file is not None and "df_final" in locals():
                 if len(tipos_selecionados) > 0:
                     df_filtrado = df_filtrado[
                         df_filtrado["digito"].isin(tipos_selecionados)
+                    ]
+                if len(codigos_selecionados) > 0:
+                    df_filtrado = df_filtrado[
+                        df_filtrado["codigo"].astype(str).isin(codigos_selecionados)
                     ]
 
                 df_filtrado = df_filtrado.rename(
