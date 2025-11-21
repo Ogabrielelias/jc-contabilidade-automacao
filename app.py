@@ -8,16 +8,13 @@ import re
 def sort_filial(value):
     value = str(value).strip()
 
-    # Put "Matriz" always first
     if value.lower() == "matriz":
         return (0, 0)
 
-    # Match "Buffon X"
     m = re.match(r"Buffon\s+(\d+)", value)
     if m:
-        return (1, int(m.group(1)))  # Sort by numeric value
+        return (1, int(m.group(1)))
 
-    # Everything else goes after
     return (2, value)
 
 
@@ -61,12 +58,10 @@ with st.container(border=True):
         try:
             uploaded_file.seek(0)
             uploaded_file = io.BytesIO(uploaded_file.read())
-            # Detecta delimitador automaticamente
             content = uploaded_file.getvalue().decode("utf-8", errors="ignore")
             sniffer = csv.Sniffer()
             delimiter = sniffer.sniff(content.splitlines()[0]).delimiter
 
-            # Lê o CSV
             df = pd.read_csv(
                 io.StringIO(content),
                 delimiter=delimiter,
@@ -75,9 +70,9 @@ with st.container(border=True):
                 header=None,
             )
 
-            # Limpeza básica
             df = df.dropna(axis=1, how="all")
             df = df.dropna(axis=0, how="all")
+
             df.columns = [
                 "col_1",
                 "col_2",
@@ -102,7 +97,7 @@ with st.container(border=True):
                     | (df["contabilidade"].astype(str).str.strip() == "6")
                 ]
                 df = df[df["digito"] != "N"]
-            # Junta colunas da H em diante
+
             if df.shape[1] > 9:
                 primeiras_colunas = df.iloc[:, :8]
                 colunas_para_juntar = df.iloc[:, 8:]
@@ -127,7 +122,6 @@ with st.container(border=True):
                     "O arquivo possui menos de 8 colunas. Nenhuma junção foi feita."
                 )
 
-            # Regex para extrair as informações
             def extrair_info(texto):
                 texto = str(texto)
                 padrao = re.compile(
@@ -147,7 +141,6 @@ with st.container(border=True):
                         "digito": None,
                     }
 
-            # Extrai os campos
             extraidos = (
                 df["Informações_Complementares"].apply(extrair_info).apply(pd.Series)
             )
@@ -155,7 +148,6 @@ with st.container(border=True):
                 [df.drop(columns=["Informações_Complementares"]), extraidos], axis=1
             )
 
-            # Converte valor numérico
             df_final["valor_num"] = (
                 df_final["valor"]
                 .astype(str)
@@ -174,7 +166,6 @@ with st.container(border=True):
             df_final = df_final.drop(df_final.columns[:7], axis=1)
             df_final = df_final[df_final["digito"] != "N"]
 
-            # 🔹 REMOVE LINHAS COM DIGITO 'P' E CÓDIGOS ESPECÍFICOS
             codigos_excluir = [
                 "3101",
                 "4000",
@@ -193,6 +184,7 @@ with st.container(border=True):
                         & (df_final["1.4"].astype(str).isin(codigos_excluir))
                     )
                 ]
+
         except Exception as e:
             st.error(
                 "O arquivo enviado não corresponde ao padrão esperado. "
@@ -206,9 +198,9 @@ if uploaded_file is not None and "df_final" in locals():
 
         try:
 
-            tabs = st.tabs(["Dados Extraídos", "Proventos por filial"])
+            tabs = st.tabs(["Resumo Salários", "Dados Extraídos"])
 
-            with tabs[0]:
+            with tabs[1]:
                 st.write(
                     "Tabela com todos os lançamentos extraídos do arquivo. "
                     "Você pode filtrar por **filial** e **tipo (Provento, Desconto)**."
@@ -278,7 +270,6 @@ if uploaded_file is not None and "df_final" in locals():
                         placeholder="Selecione um ou mais códigos",
                     )
 
-                    # Converte "código – descrição" para código puro
                     codigos_selecionados = [
                         codigo_map[x] for x in codigos_selecionados_fmt
                     ]
@@ -320,18 +311,34 @@ if uploaded_file is not None and "df_final" in locals():
                 st.dataframe(df_filtrado, use_container_width=True)
 
             # ===============================
-            # 🔹 SOMA POR FILIAL (considerando filtro e dígito D)
+            # PROVENTOS POR FILIAL
             # ===============================
-            with tabs[1]:
-                st.markdown(
-                    "Aqui você vê a soma dos **proventos** por filial e também pode selecionar "
-                    "**códigos específicos** de proventos e descontos para diminuir do total de proventos."
-                )
+            with tabs[0]:
                 df_soma = (
                     df_final[df_final["digito"] == "P"]
                     .groupby("filial", as_index=False)["valor_num"]
                     .sum()
                 )
+
+                df_soma.rename(columns={"filial": "Nome da Filial"}, inplace=True)
+
+                def mapear_filial(valor):
+                    valor = str(valor).strip()
+
+                    if valor.lower() == "matriz":
+                        return "Matriz"
+
+                    m = re.match(r"Buffon\s+(\d+)", valor, re.IGNORECASE)
+                    if m:
+                        numero = int(m.group(1))
+                        return f"Filial {numero - 1}"
+
+                    return valor
+
+                df_soma["Filial"] = df_soma["Nome da Filial"].apply(mapear_filial)
+
+                # 🔧 CORREÇÃO AQUI — manter somente colunas existentes
+                df_soma = df_soma[["Filial", "Nome da Filial", "valor_num"]]
 
                 df_soma["total_proventos"] = df_soma["valor_num"].apply(
                     lambda x: f"R${x:,.2f}".replace(",", "X")
@@ -345,7 +352,7 @@ if uploaded_file is not None and "df_final" in locals():
                 )
 
                 codigos_P_padrao = ["17", "130", "169", "170", "171", "173", "907"]
-                codigos_D_padrao = ["3", "6", "19", "22", "23", "911", "938"]
+                codigos_D_padrao = ["3", "6", "19", "22", "23", "24", "911", "938"]
 
                 codigos_P_existentes = (
                     df_final[df_final["digito"] == "P"]["codigo"]
@@ -371,7 +378,6 @@ if uploaded_file is not None and "df_final" in locals():
                     zip(df_final["codigo_desc"], df_final["codigo"].astype(str))
                 )
 
-                # 🔹 filtrar somente as opções de cada tipo
                 codigos_P_formatados = sorted(
                     [c for c in codigo_map if codigo_map[c] in codigos_P_existentes],
                     key=lambda x: int(x.split(" – ")[0]),
@@ -391,10 +397,10 @@ if uploaded_file is not None and "df_final" in locals():
                 ]
 
                 with st.expander(
-                    "Selecionar códigos de proventos e descontos para ajuste do total líquido"
+                    "Códigos de proventos e descontos para subtrair do total de proventos"
                 ):
                     st.write(
-                        "Os códigos listados abaixo permitem ajustar o cálculo do **total líquido** "
+                        "Os códigos listados abaixo permitem ajustar o cálculo do **total salário** "
                         "subtraindo valores específicos de proventos ou descontos. \n\n"
                         f"Os códigos padrão utilizados são: **{', '.join(codigos_P_padrao)} de proventos** e **{', '.join(codigos_D_padrao)} de descontos**. "
                         "Se algum deles não aparecer na lista, significa que **nenhuma filial utilizou esse código** "
@@ -409,7 +415,6 @@ if uploaded_file is not None and "df_final" in locals():
                         options=codigos_P_formatados,
                         default=codigos_P_default_fmt,
                     )
-                    # Converter "código – descrição" → código
                     codigos_P_selecionados = [
                         codigo_map[x] for x in codigos_P_select_fmt
                     ]
@@ -420,14 +425,9 @@ if uploaded_file is not None and "df_final" in locals():
                         options=codigos_D_formatados,
                         default=codigos_D_default_fmt,
                     )
-                    # Converter "código – descrição" → código
                     codigos_D_selecionados = [
                         codigo_map[x] for x in codigos_D_select_fmt
                     ]
-
-                st.markdown(
-                    "<hr style='padding:4px 0 0 0;margin:0;'>", unsafe_allow_html=True
-                )
 
                 df_codigos_especiais = (
                     df_final[
@@ -456,166 +456,391 @@ if uploaded_file is not None and "df_final" in locals():
                     columns={"valor_num": "total_codigos_especiais"}, inplace=True
                 )
 
-                df_soma = df_soma.merge(df_codigos_especiais, on="filial", how="left")
+                df_soma = df_soma.merge(
+                    df_codigos_especiais,
+                    left_on="Nome da Filial",
+                    right_on="filial",
+                    how="left",
+                ).drop(columns=["filial"])
 
                 df_soma["total_codigos_especiais"] = df_soma[
                     "total_codigos_especiais"
+                ].fillna(0)
+
+                df_soma["total_codigos_especiais_fmt"] = df_soma[
+                    "total_codigos_especiais"
                 ].apply(
-                    lambda x: (
-                        f"R${x:,.2f}".replace(",", "X")
-                        .replace(".", ",")
-                        .replace("X", ".")
-                        if pd.notnull(x)
-                        else "R$0,00"
-                    )
-                )
-
-                # Criar coluna numérica real para cálculo
-                df_soma["total_proventos_num"] = (
-                    df_soma["total_proventos"]
-                    .str.replace("R$", "")
-                    .str.replace(".", "")
-                    .str.replace(",", ".")
-                    .astype(float)
-                )
-                df_soma["total_codigos_especiais_num"] = (
-                    df_soma["total_codigos_especiais"]
-                    .str.replace("R$", "")
-                    .str.replace(".", "")
-                    .str.replace(",", ".")
-                    .astype(float)
-                )
-
-                # Novo total líquido = Proventos – Códigos Selecionados
-                df_soma["total_liquido_num"] = (
-                    df_soma["total_proventos_num"]
-                    - df_soma["total_codigos_especiais_num"]
-                )
-
-                # Converter para formato monetário
-                df_soma["total_liquido"] = df_soma["total_liquido_num"].apply(
                     lambda x: f"R${x:,.2f}".replace(",", "X")
                     .replace(".", ",")
                     .replace("X", ".")
                 )
 
-                # Selecionar colunas finais
-                df_soma = df_soma[
-                    [
-                        "filial",
-                        "total_proventos",
-                        "total_codigos_especiais",
-                        "total_liquido",
-                    ]
-                ]
+                df_soma["total_liquido"] = (
+                    df_soma["valor_num"] - df_soma["total_codigos_especiais"]
+                )
+
+                df_soma["total_liquido_fmt"] = df_soma["total_liquido"].apply(
+                    lambda x: f"R${x:,.2f}".replace(",", "X")
+                    .replace(".", ",")
+                    .replace("X", ".")
+                )
 
                 df_soma = df_soma.sort_values(
-                    by="filial", key=lambda col: col.map(sort_filial)
+                    by="Nome da Filial", key=lambda col: col.map(sort_filial)
                 )
 
-                filiais_opcoes = sorted(
-                    df_soma["filial"].dropna().unique(), key=sort_filial
-                )
-                filiais_selecionadas = st.multiselect(
-                    "Filtrar por Filial:",
-                    filiais_opcoes,
-                    default=None,
-                    placeholder="Selecione uma ou mais filiais",
-                    key="soma_filiais",
+                COLUNAS_ESPECIAIS = {
+                    "C-270.4  - INSS": ["901"],
+                    "C-147.3  - IRF rec.": ["941"],
+                    "C-275.5  - V.T.": ["93", "240"],
+                    "C-297.6 - Farm.": ["231"],
+                    "C-51.5 - Ad. Sal.": [
+                        "30",
+                        "31",
+                        "32",
+                        "33",
+                        "34",
+                        "35",
+                        "36",
+                        "37",
+                        "38",
+                        "150",
+                        "151",
+                        "152",
+                        "153",
+                        "154",
+                        "155",
+                        "156",
+                        "157",
+                        "158",
+                    ],
+                    "C-51.5 - Desc. Ad. Sal.": ["44"],
+                    "C-2267.5 - Confissao de dívida": ["20053"],
+                    "C-142.2 - P.Alim.": ["908"],
+                    "C-297.6 - Pl. Saúde": [
+                        "233",
+                        "241",
+                        "242",
+                        "262",
+                        "20091",
+                    ],
+                    "C-146.5 - Sind. Rec.": ["933", "11992", "20078", "20088", "20090"],
+                    "C-302.6 - Cesta Basica": ["258", "20080"],
+                    "D-54.0 - Sal. Fam.": ["907"],
+                    "D-53.1 - Sal. Mat.": ["130"],
+                    "D-52.3 - ad 13° sal.": ["169", "170", "171", "173"],
+                    "C-22667 - D-CAIXA (Desc.emprest. Consig.)": ["20086"],
+                }
+
+                # ==========================================================
+                # FUNÇÃO PARA SOMAR CÓDIGOS POR FILIAL
+                # ==========================================================
+
+                def somar_codigos_por_filial(codigos):
+                    codigos_str = set(str(c) for c in codigos)
+                    return (
+                        df_final[df_final["codigo"].astype(str).isin(codigos_str)]
+                        .groupby("filial", as_index=False)["valor_num"]
+                        .sum()
+                        .rename(columns={"valor_num": "valor"})
+                    )
+
+                # ==========================================================
+                # GERAR DATAFRAMES INDIVIDUAIS PARA CADA CATEGORIA
+                # ==========================================================
+
+                dfs_merged = []
+
+                for nome_coluna, codigos in COLUNAS_ESPECIAIS.items():
+                    df_temp = somar_codigos_por_filial(codigos)
+                    df_temp.rename(columns={"valor": nome_coluna}, inplace=True)
+                    dfs_merged.append(df_temp)
+
+                # ==========================================================
+                # MERGE SEGURO (REUTILIZÁVEL)
+                # ==========================================================
+
+                def merge_seguro(base, novo):
+                    base = base.merge(
+                        novo, left_on="Nome da Filial", right_on="filial", how="left"
+                    )
+                    base = base.drop(columns=["filial"])
+                    return base
+
+                # ==========================================================
+                # MERGE DE TODAS AS COLUNAS NO DF PRINCIPAL
+                # ==========================================================
+
+                for df_temp in dfs_merged:
+                    df_soma = merge_seguro(df_soma, df_temp)
+
+                # ==========================================================
+                # TRATAR VALORES FALTANTES
+                # ==========================================================
+
+                for col in COLUNAS_ESPECIAIS.keys():
+                    df_soma[col] = df_soma[col].fillna(0)
+
+                # ==========================================================
+                # FORMATAR EM REAIS
+                # ==========================================================
+
+                def fmt_real(v):
+                    return (
+                        f"R${v:,.2f}".replace(",", "X")
+                        .replace(".", ",")
+                        .replace("X", ".")
+                    )
+
+                for col in COLUNAS_ESPECIAIS.keys():
+                    df_soma[col + "_fmt"] = df_soma[col].apply(fmt_real)
+
+                # ==========================================================
+                # MONTAR DATAFRAME FINAL
+                # ==========================================================
+
+                colunas_fmt = [c + "_fmt" for c in [*COLUNAS_ESPECIAIS.keys()][0:11]]
+                colunas_fmt_2 = [c + "_fmt" for c in [*COLUNAS_ESPECIAIS.keys()][11:14]]
+                colunas_fmt_3 = [c + "_fmt" for c in [*COLUNAS_ESPECIAIS.keys()][14:]]
+
+                # Lista das colunas especiais já existentes em df_soma
+                colunas_calc_sub_t = list(COLUNAS_ESPECIAIS.keys())[0:11]
+
+                # Converter valores de C-266.6 - Total salário para número
+                df_soma["C-266.6_num"] = (
+                    df_soma["total_liquido_fmt"]
+                    .str.replace("R$", "")
+                    .str.replace(".", "")
+                    .str.replace(",", ".")
+                    .astype(float)
                 )
 
-                df_filtrado = df_soma.copy()
+                # Converter valores das colunas especiais para número
+                for col in colunas_calc_sub_t:
+                    df_soma[col + "_num"] = (
+                        df_soma[col + "_fmt"]
+                        .str.replace("R$", "")
+                        .str.replace(".", "")
+                        .str.replace(",", ".")
+                        .astype(float)
+                    )
 
-                if len(filiais_selecionadas) > 0:
-                    df_filtrado = df_filtrado[
-                        df_filtrado["filial"].isin(filiais_selecionadas)
+                # Subt = Total salário - soma das colunas especiais
+                df_soma["C-152.0 - sub t"] = df_soma["C-266.6_num"] - df_soma[
+                    [c + "_num" for c in colunas_calc_sub_t]
+                ].sum(axis=1)
+
+                # Formatar
+                df_soma["C-152.0 - sub t_fmt"] = df_soma["C-152.0 - sub t"].apply(
+                    fmt_real
+                )
+
+                # ==========================================================
+                # NOVA COLUNA: C-152.0 - Sal. a pagar
+                # ==========================================================
+
+                # Colunas especiais que devem ser subtraídas
+                colunas_salario_a_pagar = list(COLUNAS_ESPECIAIS.keys())[11:14]
+
+                # Converter essas colunas para número (se ainda não tiverem)
+                for col in colunas_salario_a_pagar:
+                    df_soma[col + "_num"] = (
+                        df_soma[col + "_fmt"]
+                        .str.replace("R$", "")
+                        .str.replace(".", "")
+                        .str.replace(",", ".")
+                        .astype(float)
+                    )
+
+                # Calcular soma das três colunas
+                df_soma["soma_especiais_sal_pagar"] = df_soma[
+                    [c + "_num" for c in colunas_salario_a_pagar]
+                ].sum(axis=1)
+
+                # Calcular Salário a Pagar
+                df_soma["C-152.0 - Sal. a pagar"] = (
+                    df_soma["C-152.0 - sub t"] + df_soma["soma_especiais_sal_pagar"]
+                )
+
+                # Formatar
+                df_soma["C-152.0 - Sal. a pagar_fmt"] = df_soma[
+                    "C-152.0 - Sal. a pagar"
+                ].apply(fmt_real)
+
+                # ==========================================================
+                # NOVA COLUNA: RESULTADO
+                # resultado = (C-152.0 - Sal. a pagar) - (C-22667 - D-CAIXA ...)
+                # ==========================================================
+
+                col_dcaixa = list(COLUNAS_ESPECIAIS.keys())[14]
+
+                # Converter a coluna D-CAIXA para número
+                df_soma[col_dcaixa + "_num"] = (
+                    df_soma[col_dcaixa + "_fmt"]
+                    .str.replace("R$", "")
+                    .str.replace(".", "")
+                    .str.replace(",", ".")
+                    .astype(float)
+                )
+
+                # Calcular o resultado final
+                df_soma["Resultado"] = (
+                    df_soma["C-152.0 - Sal. a pagar"] - df_soma[col_dcaixa + "_num"]
+                )
+
+                # Formatar para R$
+                df_soma["Resultado_fmt"] = df_soma["Resultado"].apply(fmt_real)
+
+                df_resumo = df_soma[
+                    [
+                        "Filial",
+                        "total_proventos",
+                        "total_codigos_especiais_fmt",
+                        "total_liquido_fmt",
                     ]
-
-                df_filtrado = df_filtrado.rename(
+                    + colunas_fmt
+                    + ["C-152.0 - sub t_fmt"]
+                    + colunas_fmt_2
+                    + ["C-152.0 - Sal. a pagar_fmt"]
+                    + colunas_fmt_3
+                    + ["Resultado_fmt"]
+                ].rename(
                     columns={
-                        "filial": "Filial",
                         "total_proventos": "Total proventos",
-                        "total_codigos_especiais": "Total proventos e descontos selecionados",
-                        "total_liquido": "Total líquido (Proventos – Selecionados)",
+                        "total_codigos_especiais_fmt": "Total proventos e descontos selecionados",
+                        "total_liquido_fmt": "C-266.6 - Total salário",
+                        **{c + "_fmt": c for c in COLUNAS_ESPECIAIS.keys()},
+                        "C-152.0 - sub t_fmt": "C-152.0 - sub t",
+                        "C-152.0 - Sal. a pagar_fmt": "C-152.0 - Sal. a pagar",
+                        "Resultado_fmt": "Resultado",
                     }
                 )
-                df_filtrado.reset_index(drop=True, inplace=True)
 
-                st.dataframe(df_filtrado, use_container_width=True)
+                df_resumo.reset_index(drop=True, inplace=True)
 
-                st.markdown(
-                    "<hr style='padding:4px 0 0 0;margin:0;'>", unsafe_allow_html=True
+                mostrar_proventos = st.toggle(
+                    "Mostrar valores utilizadas para calculo de salário", value=False
                 )
 
-                # Garantir que estamos usando a versão filtrada
-                df_metricas = df_filtrado.copy()
+                df_resumo_view = df_resumo.copy()
 
-                # Converter para números reais
-                df_metricas["total_proventos_num"] = (
-                    df_metricas["Total proventos"]
-                    .str.replace("R$", "")
-                    .str.replace(".", "")
-                    .str.replace(",", ".")
-                    .astype(float)
-                )
+                if not mostrar_proventos:
+                    df_resumo_view = df_resumo_view.drop(
+                        ["Total proventos", "Total proventos e descontos selecionados"],
+                        axis=1,
+                    )
+                for col in df_resumo_view.columns:
+                    if (
+                        df_resumo_view[col].dtype == object
+                        and df_resumo_view[col].str.contains("R\$").any()
+                    ):
+                        df_resumo_view[col] = df_resumo_view[col].str.replace(
+                            "R$", "", regex=False
+                        )
 
-                df_metricas["total_codigos_num"] = (
-                    df_metricas["Total proventos e descontos selecionados"]
-                    .str.replace("R$", "")
-                    .str.replace(".", "")
-                    .str.replace(",", ".")
-                    .astype(float)
-                )
+                df_totais = df_resumo_view.copy()
 
-                df_metricas["total_liquido_num"] = (
-                    df_metricas["Total líquido (Proventos – Selecionados)"]
-                    .str.replace("R$", "")
-                    .str.replace(".", "")
-                    .str.replace(",", ".")
-                    .astype(float)
-                )
+                # Identificar colunas numéricas que estão no formato R$
+                colunas_monetarias = [
+                    col
+                    for col in df_totais.columns
+                    if df_totais[col].dtype == object
+                    and df_totais[col].str.contains(",").any()
+                ]
 
-                # Cálculos
-                soma_total_proventos = df_metricas["total_proventos_num"].sum()
-                soma_total_codigos = df_metricas["total_codigos_num"].sum()
-                soma_total_liquido = df_metricas["total_liquido_num"].sum()
-                qtd_filiais = len(df_metricas)
+                # Converter temporariamente para float
+                for col in colunas_monetarias:
+                    df_totais[col + "_num"] = (
+                        df_totais[col]
+                        .str.replace(".", "")
+                        .str.replace(",", ".")
+                        .astype(float)
+                    )
 
-                # Formatação
-                fmt = (
-                    lambda x: f"R${x:,.2f}".replace(",", "X")
-                    .replace(".", ",")
-                    .replace("X", ".")
-                )
+                # Criar dicionário da linha de totais
+                linha_total = {"Filial": "", "Filial": "TOTAL GERAL"}
 
-                colA, colB, colC, colD = st.columns(4)
+                # Para cada coluna monetária, soma
+                for col in colunas_monetarias:
+                    total = df_totais[col + "_num"].sum()
+                    linha_total[col] = (
+                        f"{total:,.2f}".replace(",", "X")
+                        .replace(".", ",")
+                        .replace("X", ".")
+                    )
 
-                colA.metric("Quantidade de filiais consideradas", qtd_filiais)
-                colB.metric("Soma total dos proventos", fmt(soma_total_proventos))
-                colC.metric(
-                    "Soma total das reduções selecionadas", fmt(soma_total_codigos)
-                )
-                colD.metric("Total líquido geral", fmt(soma_total_liquido))
+                # Outras colunas numéricas não-R$ (se existirem)
+                colunas_numericas = [
+                    col
+                    for col in df_totais.select_dtypes(include=["number"]).columns
+                    if col.endswith("_num") is False
+                ]
+
+                for col in colunas_numericas:
+                    linha_total[col] = df_totais[col].sum()
+
+                # Adicionar linha ao final do dataframe
+                df_totais = df_totais[list(df_resumo_view.columns)].copy()
+                df_totais.loc[len(df_totais)] = linha_total
+
+                df_totais.set_index("Filial", inplace=True)
+
+                def bold_last_row(row):
+                    return [
+                        "font-weight: bold" if row.name == "TOTAL GERAL" else ""
+                        for _ in row
+                    ]
+
+                df_resumo_styled = df_totais.style.set_table_styles(
+                    [
+                        {
+                            "selector": "th.row_heading",
+                            "props": [("min-width", "200px")],
+                        },
+                        {
+                            "selector": "th.col_heading",
+                            "props": [("min-width", "200px")],
+                        },
+                    ]
+                ).apply(bold_last_row, axis=1)
+                # Exibir tabela com linha de total
+                st.dataframe(df_resumo_styled, use_container_width=True)
 
                 # ===============================
                 # 🔹 DOWNLOADS
                 # ===============================
                 output = io.BytesIO()
 
+                df_download = df_totais.copy()
+                df_download = df_totais.reset_index()
+
+                for col in df_download.columns:
+                    if (
+                        df_download[col].dtype == object
+                        and df_download[col].str.contains("R\$").any()
+                    ):
+                        df_download[col] = (
+                            df_download[col]
+                            .str.replace("R$", "", regex=False)
+                            .str.replace(".", "", regex=False)
+                            .str.replace(",", ".", regex=False)
+                            .astype(float)
+                        )
                 with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-                    df_soma.to_excel(writer, index=False, sheet_name="Soma por Filial")
+                    df_download.to_excel(
+                        writer, index=False, sheet_name="Soma por Filial"
+                    )
 
                 # Conteúdo do arquivo
                 xlsx_data = output.getvalue()
 
                 st.download_button(
-                    label=":material/download: Baixar soma por filial",
+                    label=":material/download: Baixar",
                     data=xlsx_data,
-                    file_name="soma_por_filial.xlsx",
+                    file_name="resumo_salarios_buffon.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
                 )
         except Exception as e:
-            st.error(
-                "Ocorreu um erro ao processar os dados extraídos. Por favor, tente novamente ou contate o suporte."
-            )
+            st.error("Ocorreu um erro ao processar os dados extraídos.")
+            print(f"[ERRO] - {e}")
