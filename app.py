@@ -3,6 +3,7 @@ import pandas as pd
 import io
 import csv
 import re
+from datetime import datetime
 
 
 def sort_filial(value):
@@ -314,6 +315,8 @@ if uploaded_file is not None and "df_final" in locals():
             # PROVENTOS POR FILIAL
             # ===============================
             with tabs[0]:
+                st.subheader("Resumo de Salários")
+                st.write("")
                 df_soma = (
                     df_final[df_final["digito"] == "P"]
                     .groupby("filial", as_index=False)["valor_num"]
@@ -587,7 +590,7 @@ if uploaded_file is not None and "df_final" in locals():
 
                 def fmt_real(v):
                     return (
-                        f"R${v:,.2f}".replace(",", "X")
+                        f"{v:,.2f}".replace(",", "X")
                         .replace(".", ",")
                         .replace("X", ".")
                     )
@@ -806,41 +809,139 @@ if uploaded_file is not None and "df_final" in locals():
                 # Exibir tabela com linha de total
                 st.dataframe(df_resumo_styled, use_container_width=True)
 
+                st.subheader("Resumo Prolabore")
+                st.write("")
+
+                # --- Tabela Prolabore / INSS / Total Líquido ---
+
+                # Filtrar valores
+                df_prolabore = (
+                    df_final[df_final["codigo"] == 17]
+                    .groupby("filial")["valor_num"]
+                    .sum()
+                    .reset_index()
+                )
+                df_prolabore.rename(columns={"valor_num": "prolabore"}, inplace=True)
+
+                df_inss = (
+                    df_final[df_final["codigo"] == 940]
+                    .groupby("filial")["valor_num"]
+                    .sum()
+                    .reset_index()
+                )
+                df_inss.rename(columns={"valor_num": "inss"}, inplace=True)
+
+                # Unir prolabore + inss em uma só tabela
+                df_extra = pd.merge(
+                    df_prolabore, df_inss, on="filial", how="outer"
+                ).fillna(0)
+
+                # Calcular total líquido
+                df_extra["total_liquido"] = df_extra["prolabore"] - df_extra["inss"]
+
+                # 🔥 Criar linha de total geral
+                total_prolabore = df_extra["prolabore"].sum()
+                total_inss = df_extra["inss"].sum()
+                total_liquido = df_extra["total_liquido"].sum()
+
+                df_total = pd.DataFrame(
+                    {
+                        "filial": ["TOTAL GERAL"],
+                        "prolabore": [total_prolabore],
+                        "inss": [total_inss],
+                        "total_liquido": [total_liquido],
+                    }
+                )
+
+                # Adicionar a linha ao dataframe
+                df_extra = pd.concat([df_extra, df_total], ignore_index=True)
+
+                # Formatar valores
+                df_extra_fmt = df_extra.copy()
+                df_extra_fmt["prolabore"] = df_extra_fmt["prolabore"].apply(fmt_real)
+                df_extra_fmt["inss"] = df_extra_fmt["inss"].apply(fmt_real)
+                df_extra_fmt["total_liquido"] = df_extra_fmt["total_liquido"].apply(
+                    fmt_real
+                )
+
+                # Ordenar mantendo TOTAL GERAL no final
+                df_extra_fmt["__ordem__"] = df_extra_fmt["filial"].apply(
+                    lambda x: (999, "") if x == "TOTAL GERAL" else sort_filial(x)
+                )
+                df_extra_fmt = df_extra_fmt.sort_values("__ordem__").drop(
+                    columns="__ordem__"
+                )
+
+                # Renomear colunas
+                df_extra_fmt.rename(
+                    columns={
+                        "filial": "Filial",
+                        "prolabore": "Prolabore",
+                        "inss": "INSS",
+                        "total_liquido": "Total Líquido",
+                    },
+                    inplace=True,
+                )
+
+                df_extra_fmt.set_index("Filial", inplace=True)
+
+                df_extra_fmt_styled = df_extra_fmt.style.set_table_styles(
+                    [
+                        {
+                            "selector": "th.row_heading",
+                            "props": [("min-width", "200px")],
+                        },
+                        {
+                            "selector": "th.col_heading",
+                            "props": [("min-width", "200px")],
+                        },
+                    ]
+                ).apply(bold_last_row, axis=1)
+
+                st.dataframe(df_extra_fmt_styled, use_container_width=True)
+
                 # ===============================
                 # 🔹 DOWNLOADS
                 # ===============================
                 output = io.BytesIO()
 
-                df_download = df_totais.copy()
-                df_download = df_totais.reset_index()
+                # --- Preparar df_totais para download ---
+                df_download_totais = df_totais.reset_index().copy()
 
-                for col in df_download.columns:
-                    if (
-                        df_download[col].dtype == object
-                        and df_download[col].str.contains("R\$").any()
-                    ):
-                        df_download[col] = (
-                            df_download[col]
-                            .str.replace("R$", "", regex=False)
-                            .str.replace(".", "", regex=False)
-                            .str.replace(",", ".", regex=False)
-                            .astype(float)
-                        )
+                # --- Preparar df_extra (Prolabore/INSS) para o Excel ---
+                # df_extra contém os valores numericamente corretos antes da formatação
+                df_download_extra = df_extra_fmt.copy()
+
+                # Ordenar corretamente
+                df_download_extra = df_download_extra.sort_values(
+                    by="Filial", key=lambda col: col.map(sort_filial)
+                )
+
+                # Criar Excel com 2 abas
                 with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-                    df_download.to_excel(
-                        writer, index=False, sheet_name="Soma por Filial"
+                    df_download_totais.to_excel(
+                        writer, index=False, sheet_name="Resumo Salários"
+                    )
+                    df_download_extra.to_excel(
+                        writer, index=False, sheet_name="Calculo Prolabore"
                     )
 
-                # Conteúdo do arquivo
                 xlsx_data = output.getvalue()
 
+                # --- Nome automático com mês e ano ---
+
+                mes_ano = datetime.now().strftime("%m-%Y")
+                nome_arquivo = f"resumo_salarios_buffon_{mes_ano}.xlsx"
+
+                # Botão de download
                 st.download_button(
                     label=":material/download: Baixar",
                     data=xlsx_data,
-                    file_name="resumo_salarios_buffon.xlsx",
+                    file_name=nome_arquivo,
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     type="primary",
                 )
+
         except Exception as e:
             st.error("Ocorreu um erro ao processar os dados extraídos.")
             print(f"[ERRO] - {e}")
