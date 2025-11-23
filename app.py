@@ -910,7 +910,7 @@ if uploaded_file is not None and "df_final" in locals():
 
                 # --- Preparar df_extra (Prolabore/INSS) para o Excel ---
                 # df_extra contém os valores numericamente corretos antes da formatação
-                df_download_extra = df_extra_fmt.copy()
+                df_download_extra = df_extra_fmt.reset_index().copy()
 
                 # Ordenar corretamente
                 df_download_extra = df_download_extra.sort_values(
