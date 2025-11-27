@@ -400,7 +400,7 @@ if uploaded_file is not None and "df_final" in locals():
                 ]
 
                 with st.expander(
-                    "Códigos de proventos e descontos para subtrair do total de proventos"
+                    "Códigos que serão descontados do total de proventos para calcular o “D-266.6 - Total Salário”"
                 ):
                     st.write(
                         "Os códigos listados abaixo permitem ajustar o cálculo do **total salário** "
@@ -534,6 +534,101 @@ if uploaded_file is not None and "df_final" in locals():
                     "D-52.3 - ad 13° sal.": ["169", "170", "171", "173"],
                     "C-22667 - D-CAIXA (Desc.emprest. Consig.)": ["20086"],
                 }
+                # ==========================================================
+                # 🔹 Construir opções no formato "codigo - descricao"
+                # ==========================================================
+
+                # Criar dicionário: código → descrição
+                mapa_codigos = (
+                    df_final[["codigo", "descricao"]]
+                    .drop_duplicates()
+                    .assign(codigo=lambda df: df["codigo"].astype(str))
+                    .set_index("codigo")["descricao"]
+                    .to_dict()
+                )
+
+                # Criar lista de opções formatadas
+                opcoes_formatadas = []
+
+                for cod in df_final["codigo"].astype(str).unique():
+                    desc = mapa_codigos.get(cod, "")
+                    opcoes_formatadas.append(f"{cod} - {desc}")
+
+                # Adicionar também códigos dos defaults já existentes em COLUNAS_ESPECIAIS
+                for lista in COLUNAS_ESPECIAIS.values():
+                    for cod in lista:
+                        if cod not in mapa_codigos:
+                            # códigos que vêm apenas do default
+                            opcoes_formatadas.append(f"{cod} - (sem descrição)")
+
+                # Remover duplicados mantendo ordem
+                opcoes_formatadas = list(dict.fromkeys(opcoes_formatadas))
+
+                # ==========================================================
+                # 🔹 Função para converter "codigo - descricao" → apenas "codigo"
+                # ==========================================================
+                def extrair_codigo(item):
+                    return item.split(" - ")[0].strip()
+
+                # ==========================================================
+                # 🔹 Renderizar Multiselects (2 colunas)
+                # ==========================================================
+                with st.expander("Configuração de códigos somados por coluna"):
+                    st.markdown(
+                        """
+As colunas especiais representam grupos de códigos de proventos e descontos que devem ser somados para compor cada categoria exibida na tabela final.  
+Cada coluna é formada pela soma dos valores de todos os códigos selecionados ao lado.
+
+Você pode ajustar livremente quais códigos pertencem a cada coluna.  
+Qualquer alteração feita aqui afeta diretamente os cálculos da tabela abaixo, incluindo:
+
+- os totais por filial  
+- o subtotal (**C-152.0 - sub t**)  
+- o salário a pagar (**C-152.0 - Sal. a pagar**)  
+- o resultado final (**Resultado**)  
+- e todos os totais gerais
+
+Ou seja, esta área define **a lógica de cálculo da planilha**. Cada coluna especial nada mais é do que a soma dos códigos escolhidos para ela.
+
+Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, mas você pode adicionar ou remover códigos conforme necessário.
+                    """
+                    )
+                    col1, col2 = st.columns(2)
+                    col_toggle = True
+                    codigos_escolhidos = {}
+
+                    for coluna, lista_default_codigos in COLUNAS_ESPECIAIS.items():
+
+                        # Converter defaults para o novo formato
+                        defaults_formatados = []
+                        for cod in lista_default_codigos:
+                            desc = mapa_codigos.get(str(cod), None)
+                            if desc is not None:
+                                defaults_formatados.append(f"{cod} - {desc}")
+
+                        # Selecionar coluna visual
+                        if col_toggle:
+                            container = col1
+                        else:
+                            container = col2
+                        with container:
+                            with st.expander(f"Códigos para {coluna}"):
+                                selecionados_formatados = st.multiselect(
+                                    f"Selecione os códigos para **{coluna}**:",
+                                    options=opcoes_formatadas,
+                                    default=defaults_formatados,
+                                    key=f"multi_{coluna}",
+                                )
+
+                        # Converter de volta para códigos puros
+                        codigos_escolhidos[coluna] = [
+                            extrair_codigo(s) for s in selecionados_formatados
+                        ]
+
+                        col_toggle = not col_toggle
+
+                    # Atualiza COLUNAS_ESPECIAIS com os valores selecionados
+                    COLUNAS_ESPECIAIS = codigos_escolhidos
 
                 # ==========================================================
                 # FUNÇÃO PARA SOMAR CÓDIGOS POR FILIAL
@@ -609,8 +704,8 @@ if uploaded_file is not None and "df_final" in locals():
                 # Lista das colunas especiais já existentes em df_soma
                 colunas_calc_sub_t = list(COLUNAS_ESPECIAIS.keys())[0:11]
 
-                # Converter valores de C-266.6 - Total salário para número
-                df_soma["C-266.6_num"] = (
+                # Converter valores de D-266.6 - Total salário para número
+                df_soma["D-266.6_num"] = (
                     df_soma["total_liquido_fmt"]
                     .str.replace("R$", "")
                     .str.replace(".", "")
@@ -629,7 +724,7 @@ if uploaded_file is not None and "df_final" in locals():
                     )
 
                 # Subt = Total salário - soma das colunas especiais
-                df_soma["C-152.0 - sub t"] = df_soma["C-266.6_num"] - df_soma[
+                df_soma["C-152.0 - sub t"] = df_soma["D-266.6_num"] - df_soma[
                     [c + "_num" for c in colunas_calc_sub_t]
                 ].sum(axis=1)
 
@@ -711,7 +806,7 @@ if uploaded_file is not None and "df_final" in locals():
                     columns={
                         "total_proventos": "Total proventos",
                         "total_codigos_especiais_fmt": "Total proventos e descontos selecionados",
-                        "total_liquido_fmt": "C-266.6 - Total salário",
+                        "total_liquido_fmt": "D-266.6 - Total salário",
                         **{c + "_fmt": c for c in COLUNAS_ESPECIAIS.keys()},
                         "C-152.0 - sub t_fmt": "C-152.0 - sub t",
                         "C-152.0 - Sal. a pagar_fmt": "C-152.0 - Sal. a pagar",
