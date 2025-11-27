@@ -74,6 +74,13 @@ with st.container(border=True):
             df = df.dropna(axis=1, how="all")
             df = df.dropna(axis=0, how="all")
 
+            min_cols = 15
+            num_cols = df.shape[1]
+
+            if num_cols < min_cols:
+                for i in range(num_cols + 1, min_cols + 1):
+                    df[f"col_{i}"] = None
+
             df.columns = [
                 "col_1",
                 "col_2",
@@ -126,7 +133,7 @@ with st.container(border=True):
             def extrair_info(texto):
                 texto = str(texto)
                 padrao = re.compile(
-                    r"^(?P<descricao>.*)\s+(?P<valor>\d+(?:[.,]\d{2}))\s+(?P<nome>.+?)\s+(?P<divisor>-\d+)\s+(?P<filial>[A-Za-z0-9\s]+)\s+(?P<cnpj>\d{14})\s+(?P<digito>[A-Z])$"
+                    r"^(?P<descricao>.*?)\s+(?P<valor>\d+(?:[.,]\d{1,2}))\s+(?P<nome>.+?)\s+(?P<divisor>-\d*)\s+(?P<filial>.+?)\s+(?P<cnpj>\d{14})\s+(?P<digito>[PDN])$"
                 )
                 match = padrao.search(texto.strip())
                 if match:
@@ -149,11 +156,8 @@ with st.container(border=True):
                 [df.drop(columns=["Informações_Complementares"]), extraidos], axis=1
             )
 
-            df_final["valor_num"] = (
-                df_final["valor"]
-                .astype(str)
-                .str.replace(",", ".")
-                .astype(float, errors="ignore")
+            df_final["valor_num"] = pd.to_numeric(
+                df_final["valor"].astype(str).str.replace(",", "."), errors="coerce"
             )
 
             df_final["valor"] = df_final["valor_num"].apply(
@@ -191,6 +195,7 @@ with st.container(border=True):
                 "O arquivo enviado não corresponde ao padrão esperado. "
                 "Certifique-se de utilizar o CSV original recebido por e-mail ou contate o suporte."
             )
+            print(f"[ERRO] {e}")
             st.stop()
 
 if uploaded_file is not None and "df_final" in locals():
