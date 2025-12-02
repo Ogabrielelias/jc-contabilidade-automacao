@@ -60,7 +60,7 @@ st.markdown(
     """
     <style>
     .stMainBlockContainer {
-      padding-top: 2rem;
+      padding-top: 2.5rem;
     }
     h1, h2, h3, h4, h5, h6 {
       padding: 0 !important;
@@ -275,7 +275,7 @@ if uploaded_file is not None and "df_final" in locals():
 
                 with col1:
                     filiais_opcoes = sorted(
-                        df_table["filial"].dropna().unique(), key=sort_buffon
+                        df_table["filial"].dropna().unique(), key=sort_filial
                     )
                     filiais_selecionadas = st.multiselect(
                         "Filtrar por Filial:",
