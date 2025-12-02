@@ -3,7 +3,34 @@ import pandas as pd
 import io
 import csv
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
+
+
+def mapear_filial(valor):
+    valor = str(valor).strip()
+
+    if valor.lower() == "matriz":
+        return "Matriz"
+
+    m = re.match(r"Buffon\s+(\d+)", valor, re.IGNORECASE)
+    if m:
+        numero = int(m.group(1))
+        return f"Filial {numero - 1}"
+
+    return valor
+
+
+def sort_buffon(value):
+    value = str(value).strip()
+
+    if value.lower() == "matriz":
+        return (0, 0)
+
+    m = re.match(r"Buffon\s+(\d+)", value)
+    if m:
+        return (1, int(m.group(1)))
+
+    return (2, value)
 
 
 def sort_filial(value):
@@ -12,7 +39,7 @@ def sort_filial(value):
     if value.lower() == "matriz":
         return (0, 0)
 
-    m = re.match(r"Buffon\s+(\d+)", value)
+    m = re.match(r"Filial\s+(\d+)", value)
     if m:
         return (1, int(m.group(1)))
 
@@ -218,9 +245,13 @@ if uploaded_file is not None and "df_final" in locals():
                     "P": "Provento",
                     "D": "Desconto",
                 }
+
                 df_table["digito"] = df_table["digito"].apply(
                     lambda x: digito_map.get(x, x)
                 )
+
+                df_table["filial"] = df_table["filial"].apply(mapear_filial)
+
                 df_table = df_table.sort_values(
                     by=["filial", "digito"],
                     key=lambda col: (
@@ -244,7 +275,7 @@ if uploaded_file is not None and "df_final" in locals():
 
                 with col1:
                     filiais_opcoes = sorted(
-                        df_table["filial"].dropna().unique(), key=sort_filial
+                        df_table["filial"].dropna().unique(), key=sort_buffon
                     )
                     filiais_selecionadas = st.multiselect(
                         "Filtrar por Filial:",
@@ -329,19 +360,6 @@ if uploaded_file is not None and "df_final" in locals():
                 )
 
                 df_soma.rename(columns={"filial": "Nome da Filial"}, inplace=True)
-
-                def mapear_filial(valor):
-                    valor = str(valor).strip()
-
-                    if valor.lower() == "matriz":
-                        return "Matriz"
-
-                    m = re.match(r"Buffon\s+(\d+)", valor, re.IGNORECASE)
-                    if m:
-                        numero = int(m.group(1))
-                        return f"Filial {numero - 1}"
-
-                    return valor
 
                 df_soma["Filial"] = df_soma["Nome da Filial"].apply(mapear_filial)
 
@@ -494,13 +512,13 @@ if uploaded_file is not None and "df_final" in locals():
                 )
 
                 df_soma = df_soma.sort_values(
-                    by="Nome da Filial", key=lambda col: col.map(sort_filial)
+                    by="Nome da Filial", key=lambda col: col.map(sort_buffon)
                 )
 
                 COLUNAS_ESPECIAIS = {
-                    "C-270.4  - INSS": ["901"],
-                    "C-147.3  - IRF rec.": ["941"],
-                    "C-275.5  - V.T.": ["93", "240"],
+                    "C-270.4 - INSS": ["901"],
+                    "C-147.3 - IRF rec.": ["941"],
+                    "C-275.5 - V.T.": ["93", "240"],
                     "C-297.6 - Farm.": ["231"],
                     "C-51.5 - Ad. Sal.": [
                         "30",
@@ -966,7 +984,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
 
                 # Ordenar mantendo TOTAL GERAL no final
                 df_extra_fmt["__ordem__"] = df_extra_fmt["filial"].apply(
-                    lambda x: (999, "") if x == "TOTAL GERAL" else sort_filial(x)
+                    lambda x: (999, "") if x == "TOTAL GERAL" else sort_buffon(x)
                 )
                 df_extra_fmt = df_extra_fmt.sort_values("__ordem__").drop(
                     columns="__ordem__"
@@ -982,6 +1000,8 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                     },
                     inplace=True,
                 )
+
+                df_extra_fmt["Filial"] = df_extra_fmt["Filial"].apply(mapear_filial)
 
                 df_extra_fmt.set_index("Filial", inplace=True)
 
@@ -1000,47 +1020,134 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
 
                 st.dataframe(df_extra_fmt_styled, use_container_width=True)
 
-                # ===============================
-                # 🔹 DOWNLOADS
-                # ===============================
-                output = io.BytesIO()
+            # ===============================
+            # 🔹 DOWNLOADS
+            # ===============================
+            output = io.BytesIO()
 
-                # --- Preparar df_totais para download ---
-                df_download_totais = df_totais.reset_index().copy()
+            # --- Preparar df_totais para download ---
+            df_download_totais = df_totais.reset_index().copy()
 
-                # --- Preparar df_extra (Prolabore/INSS) para o Excel ---
-                # df_extra contém os valores numericamente corretos antes da formatação
-                df_download_extra = df_extra_fmt.reset_index().copy()
+            # --- Preparar df_extra ---
+            df_download_extra = df_extra_fmt.reset_index().copy()
 
-                # Ordenar corretamente
-                df_download_extra = df_download_extra.sort_values(
-                    by="Filial", key=lambda col: col.map(sort_filial)
+            df_download_extra = df_download_extra.sort_values(
+                by="Filial", key=lambda col: col.map(sort_buffon)
+            )
+
+            HEADER_NUMBERS = {
+                "C-270.4 - INSS": "10",
+                "C-147.3 - IRF rec.": "11",
+                "C-275.5 - V.T.": "12",
+                "C-297.6 - Farm.": "13",
+                "C-51.5 - Ad. Sal.": "90",
+                "C-51.5 - Desc. Ad. Sal.": "91",
+                "C-2267.5 - Confissao de dívida": "150",
+                "C-142.2 - P.Alim.": "15",
+                "C-297.6 - Pl. Saúde": "16",
+                "C-146.5 - Sind. Rec.": "17",
+                "C-302.6 - Cesta Basica": "18",
+                "C-152.0 - sub t": "19",
+                "C-22667 - D-CAIXA (Desc.emprest. Consig.)": "152",
+            }
+
+            # Create Excel with 2 sheets
+            with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+
+                df_download_totais.to_excel(
+                    writer, index=False, sheet_name="Resumo Salários", startrow=3
+                )
+                df_download_extra.to_excel(
+                    writer, index=False, sheet_name="Calculo Prolabore"
                 )
 
-                # Criar Excel com 2 abas
-                with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-                    df_download_totais.to_excel(
-                        writer, index=False, sheet_name="Resumo Salários"
-                    )
-                    df_download_extra.to_excel(
-                        writer, index=False, sheet_name="Calculo Prolabore"
-                    )
+                # --------------------------------------
+                # 🔹 Add Titles to "Resumo Salários"
+                # --------------------------------------
+                workbook = writer.book
+                worksheet = writer.sheets["Resumo Salários"]
 
-                xlsx_data = output.getvalue()
-
-                # --- Nome automático com mês e ano ---
-
-                mes_ano = datetime.now().strftime("%m-%Y")
-                nome_arquivo = f"resumo_salarios_buffon_{mes_ano}.xlsx"
-
-                # Botão de download
-                st.download_button(
-                    label=":material/download: Baixar",
-                    data=xlsx_data,
-                    file_name=nome_arquivo,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    type="primary",
+                format_title = workbook.add_format(
+                    {
+                        "bold": True,
+                        "align": "left",
+                        "valign": "vcenter",
+                        "font_size": 14,
+                    }
                 )
+                format_sub = workbook.add_format(
+                    {
+                        "bold": True,
+                        "align": "left",
+                        "valign": "vcenter",
+                        "font_size": 12,
+                    }
+                )
+
+                fmt_num = workbook.add_format(
+                    {
+                        "align": "center",
+                        "valign": "vcenter",
+                        "bold": True,
+                    }
+                )
+
+                fmt_cont_cods = workbook.add_format(
+                    {
+                        "align": "left",
+                        "valign": "vcenter",
+                        "bold": True,
+                    }
+                )
+
+                col_names = df_download_totais.columns.tolist()
+
+                for col_idx, col_name in enumerate(col_names):
+                    numero = HEADER_NUMBERS.get(col_name, "")
+                    worksheet.write(2, col_idx, numero, fmt_num)
+
+                worksheet.merge_range("A3:B3", "Códigos contábeis", fmt_cont_cods)
+
+                # Write titles
+                worksheet.merge_range(
+                    "A1:G1", "COMERCIAL BUFFON COMB. E TRANSPORTES LTDA", format_title
+                )
+
+                # Use previous month (MM/YYYY)
+                first_day_this_month = datetime.now().replace(day=1)
+                last_day_prev_month = first_day_this_month - timedelta(days=1)
+                mes_ano_excel = last_day_prev_month.strftime("%m/%Y")
+
+                worksheet.merge_range(
+                    "A2:G2", f"SALÁRIOS REFERENTES MÊS {mes_ano_excel}", format_sub
+                )
+
+                last_fmt = workbook.add_format({"bold": True})
+
+                # Descobrir número total de linhas do DF
+                last_row = len(df_download_totais)
+
+                # Como seu DF começa em startrow=1, somamos +1
+                excel_row = last_row + 3
+
+                # Tornar toda a linha em bold
+                worksheet.set_row(excel_row, None, last_fmt)
+
+            # Save bytes
+            xlsx_data = output.getvalue()
+
+            # --- Filename with previous month ---
+            mes_ano = last_day_prev_month.strftime("%m-%Y")
+            nome_arquivo = f"resumo_salarios_buffon_{mes_ano}.xlsx"
+
+            # Download button
+            st.download_button(
+                label=":material/download: Baixar",
+                data=xlsx_data,
+                file_name=nome_arquivo,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+            )
 
         except Exception as e:
             st.error("Ocorreu um erro ao processar os dados extraídos.")
