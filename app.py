@@ -372,149 +372,6 @@ if uploaded_file is not None and "df_final" in locals():
                     .replace("X", ".")
                 )
 
-                todos_codigos = sorted(
-                    df_final["codigo"].astype(str).dropna().unique(),
-                    key=lambda x: int(x),
-                )
-
-                codigos_P_padrao = ["17", "130", "169", "170", "171", "173", "907"]
-                codigos_D_padrao = ["3", "6", "19", "22", "23", "24", "911", "938"]
-
-                codigos_P_existentes = (
-                    df_final[df_final["digito"] == "P"]["codigo"]
-                    .astype(str)
-                    .unique()
-                    .tolist()
-                )
-                codigos_D_existentes = (
-                    df_final[df_final["digito"] == "D"]["codigo"]
-                    .astype(str)
-                    .unique()
-                    .tolist()
-                )
-
-                # Criar código – descrição apenas dentro do tipo correto
-                df_final["codigo_desc"] = (
-                    df_final["codigo"].astype(str)
-                    + " – "
-                    + df_final["descricao"].astype(str)
-                )
-
-                codigo_map = dict(
-                    zip(df_final["codigo_desc"], df_final["codigo"].astype(str))
-                )
-
-                codigos_P_formatados = sorted(
-                    [c for c in codigo_map if codigo_map[c] in codigos_P_existentes],
-                    key=lambda x: int(x.split(" – ")[0]),
-                )
-
-                codigos_D_formatados = sorted(
-                    [c for c in codigo_map if codigo_map[c] in codigos_D_existentes],
-                    key=lambda x: int(x.split(" – ")[0]),
-                )
-
-                # Filtrar padrões que realmente existem no CSV
-                codigos_P_default_fmt = [
-                    c for c in codigos_P_formatados if codigo_map[c] in codigos_P_padrao
-                ]
-                codigos_D_default_fmt = [
-                    c for c in codigos_D_formatados if codigo_map[c] in codigos_D_padrao
-                ]
-
-                with st.expander(
-                    "Códigos que serão descontados do total de proventos para calcular o “D-266.6 - Total Salário”"
-                ):
-                    st.write(
-                        "Os códigos listados abaixo permitem ajustar o cálculo do **total salário** "
-                        "subtraindo valores específicos de proventos ou descontos. \n\n"
-                        f"Os códigos padrão utilizados são: **{', '.join(codigos_P_padrao)} de proventos** e **{', '.join(codigos_D_padrao)} de descontos**. "
-                        "Se algum deles não aparecer na lista, significa que **nenhuma filial utilizou esse código** "
-                        "no arquivo enviado. Ainda assim, você pode selecionar livremente qualquer código disponível "
-                        "para realizar o ajuste conforme necessário."
-                    )
-                    colP, colD = st.columns(2)
-
-                with colP:
-                    codigos_P_select_fmt = st.multiselect(
-                        "Códigos de proventos:",
-                        options=codigos_P_formatados,
-                        default=codigos_P_default_fmt,
-                    )
-                    codigos_P_selecionados = [
-                        codigo_map[x] for x in codigos_P_select_fmt
-                    ]
-
-                with colD:
-                    codigos_D_select_fmt = st.multiselect(
-                        "Códigos de descontos:",
-                        options=codigos_D_formatados,
-                        default=codigos_D_default_fmt,
-                    )
-                    codigos_D_selecionados = [
-                        codigo_map[x] for x in codigos_D_select_fmt
-                    ]
-
-                df_codigos_especiais = (
-                    df_final[
-                        (
-                            (df_final["digito"] == "P")
-                            & (
-                                df_final["codigo"]
-                                .astype(str)
-                                .isin(codigos_P_selecionados)
-                            )
-                        )
-                        | (
-                            (df_final["digito"] == "D")
-                            & (
-                                df_final["codigo"]
-                                .astype(str)
-                                .isin(codigos_D_selecionados)
-                            )
-                        )
-                    ]
-                    .groupby("filial", as_index=False)["valor_num"]
-                    .sum()
-                )
-
-                df_codigos_especiais.rename(
-                    columns={"valor_num": "total_codigos_especiais"}, inplace=True
-                )
-
-                df_soma = df_soma.merge(
-                    df_codigos_especiais,
-                    left_on="Nome da Filial",
-                    right_on="filial",
-                    how="left",
-                ).drop(columns=["filial"])
-
-                df_soma["total_codigos_especiais"] = df_soma[
-                    "total_codigos_especiais"
-                ].fillna(0)
-
-                df_soma["total_codigos_especiais_fmt"] = df_soma[
-                    "total_codigos_especiais"
-                ].apply(
-                    lambda x: f"R${x:,.2f}".replace(",", "X")
-                    .replace(".", ",")
-                    .replace("X", ".")
-                )
-
-                df_soma["total_liquido"] = (
-                    df_soma["valor_num"] - df_soma["total_codigos_especiais"]
-                )
-
-                df_soma["total_liquido_fmt"] = df_soma["total_liquido"].apply(
-                    lambda x: f"R${x:,.2f}".replace(",", "X")
-                    .replace(".", ",")
-                    .replace("X", ".")
-                )
-
-                df_soma = df_soma.sort_values(
-                    by="Nome da Filial", key=lambda col: col.map(sort_buffon)
-                )
-
                 COLUNAS_ESPECIAIS = {
                     "C-270.4 - INSS": ["901"],
                     "C-147.3 - IRF rec.": ["941"],
@@ -600,12 +457,12 @@ if uploaded_file is not None and "df_final" in locals():
                     st.markdown(
                         """
 As colunas especiais representam grupos de códigos de proventos e descontos que devem ser somados para compor cada categoria exibida na tabela final.  
-Cada coluna é formada pela soma dos valores de todos os códigos selecionados ao lado.
+Cada coluna é formada pela soma dos valores de todos os códigos selecionados a baixo.
 
 Você pode ajustar livremente quais códigos pertencem a cada coluna.  
 Qualquer alteração feita aqui afeta diretamente os cálculos da tabela abaixo, incluindo:
 
-- os totais por filial  
+- o total de salário líquido (**D-266.6 - Total salário**)
 - o subtotal (**C-152.0 - sub t**)  
 - o salário a pagar (**C-152.0 - Sal. a pagar**)  
 - o resultado final (**Resultado**)  
@@ -617,8 +474,122 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                     """
                     )
                     col1, col2 = st.columns(2)
-                    col_toggle = True
+                    col_toggle = False
                     codigos_escolhidos = {}
+
+                    todos_codigos = sorted(
+                        df_final["codigo"].astype(str).dropna().unique(),
+                        key=lambda x: int(x),
+                    )
+
+                    codigos_padrao = [
+                        "17",
+                        "130",
+                        "169",
+                        "170",
+                        "171",
+                        "173",
+                        "907",
+                        "3",
+                        "6",
+                        "19",
+                        "22",
+                        "23",
+                        "24",
+                        "911",
+                        "938",
+                    ]
+
+                    codigos_existentes = (
+                        df_final["codigo"].astype(str).unique().tolist()
+                    )
+
+                    # Criar código – descrição apenas dentro do tipo correto
+                    df_final["codigo_desc"] = (
+                        df_final["codigo"].astype(str)
+                        + " – "
+                        + df_final["descricao"].astype(str)
+                    )
+
+                    codigo_map = dict(
+                        zip(df_final["codigo_desc"], df_final["codigo"].astype(str))
+                    )
+
+                    codigos_formatados = sorted(
+                        [c for c in codigo_map if codigo_map[c] in codigos_existentes],
+                        key=lambda x: int(x.split(" – ")[0]),
+                    )
+
+                    # Filtrar padrões que realmente existem no CSV
+                    codigos_default_fmt = [
+                        c for c in codigos_formatados if codigo_map[c] in codigos_padrao
+                    ]
+                    with col1:
+                        with st.expander(
+                            "Códigos para calculo da D-266.6 - Total Salário"
+                        ):
+
+                            codigos_select_fmt = st.multiselect(
+                                "Selecione os códigos para **D-266.6 - Total Salário**",
+                                options=codigos_formatados,
+                                default=codigos_default_fmt,
+                            )
+
+                            codigos_selecionados = [
+                                codigo_map[x] for x in codigos_select_fmt
+                            ]
+
+                        df_codigos_especiais = (
+                            df_final[
+                                (
+                                    (
+                                        df_final["codigo"]
+                                        .astype(str)
+                                        .isin(codigos_selecionados)
+                                    )
+                                )
+                            ]
+                            .groupby("filial", as_index=False)["valor_num"]
+                            .sum()
+                        )
+
+                        df_codigos_especiais.rename(
+                            columns={"valor_num": "total_codigos_especiais"},
+                            inplace=True,
+                        )
+
+                        df_soma = df_soma.merge(
+                            df_codigos_especiais,
+                            left_on="Nome da Filial",
+                            right_on="filial",
+                            how="left",
+                        ).drop(columns=["filial"])
+
+                        df_soma["total_codigos_especiais"] = df_soma[
+                            "total_codigos_especiais"
+                        ].fillna(0)
+
+                        df_soma["total_codigos_especiais_fmt"] = df_soma[
+                            "total_codigos_especiais"
+                        ].apply(
+                            lambda x: f"R${x:,.2f}".replace(",", "X")
+                            .replace(".", ",")
+                            .replace("X", ".")
+                        )
+
+                        df_soma["total_liquido"] = (
+                            df_soma["valor_num"] - df_soma["total_codigos_especiais"]
+                        )
+
+                        df_soma["total_liquido_fmt"] = df_soma["total_liquido"].apply(
+                            lambda x: f"R${x:,.2f}".replace(",", "X")
+                            .replace(".", ",")
+                            .replace("X", ".")
+                        )
+
+                        df_soma = df_soma.sort_values(
+                            by="Nome da Filial", key=lambda col: col.map(sort_buffon)
+                        )
 
                     for coluna, lista_default_codigos in COLUNAS_ESPECIAIS.items():
 
