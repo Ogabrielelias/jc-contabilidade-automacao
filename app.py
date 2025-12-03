@@ -124,7 +124,7 @@ with st.container(border=True):
                 resultados.append(
                     {
                         "Filial": filial,
-                        "Funcionários": (
+                        "Func.": (
                             funcionarios
                             if funcionarios is not None
                             else "Não encontrado"
@@ -495,7 +495,7 @@ if uploaded_file is not None and "df_final" in locals():
                         "158",
                     ],
                     "C-51.5 - Desc. Ad. Sal.": ["44"],
-                    "C-2267.5 - Confissao de dívida": ["20053"],
+                    "C-2267.5 - Conf. dívida": ["20053"],
                     "C-142.2 - P.Alim.": ["908"],
                     "C-297.6 - Pl. Saúde": [
                         "233",
@@ -505,7 +505,7 @@ if uploaded_file is not None and "df_final" in locals():
                         "20091",
                     ],
                     "C-146.5 - Sind. Rec.": ["933", "11992", "20078", "20088", "20090"],
-                    "C-302.6 - Cesta Basica": ["258", "20080"],
+                    "C-302.6 - C.B.": ["258", "20080"],
                     "D-54.0 - Sal. Fam.": ["907"],
                     "D-53.1 - Sal. Mat.": ["130"],
                     "D-52.3 - ad 13° sal.": ["169", "170", "171", "173"],
@@ -559,7 +559,7 @@ Cada coluna é formada pela soma dos valores de todos os códigos selecionados a
 Você pode ajustar livremente quais códigos pertencem a cada coluna.  
 Qualquer alteração feita aqui afeta diretamente os cálculos da tabela abaixo, incluindo:
 
-- o total de salário líquido (**D-266.6 - Total salário**)
+- o total de salário líquido (**D-266.6 - T. salário**)
 - o subtotal (**C-152.0 - sub t**)  
 - o salário a pagar (**C-152.0 - Sal. a pagar**)  
 - o resultado final (**Resultado**)  
@@ -623,11 +623,11 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                     ]
                     with col1:
                         with st.expander(
-                            "Códigos para calculo da D-266.6 - Total Salário"
+                            "Códigos para calculo da D-266.6 - T. Salário"
                         ):
 
                             codigos_select_fmt = st.multiselect(
-                                "Selecione os códigos para **D-266.6 - Total Salário**",
+                                "Selecione os códigos para **D-266.6 - T. Salário**",
                                 options=codigos_formatados,
                                 default=codigos_default_fmt,
                             )
@@ -795,7 +795,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 # Lista das colunas especiais já existentes em df_soma
                 colunas_calc_sub_t = list(COLUNAS_ESPECIAIS.keys())[0:11]
 
-                # Converter valores de D-266.6 - Total salário para número
+                # Converter valores de D-266.6 - T. salário para número
                 df_soma["D-266.6_num"] = (
                     df_soma["total_liquido_fmt"]
                     .str.replace("R$", "")
@@ -897,7 +897,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                     columns={
                         "total_proventos": "Total proventos",
                         "total_codigos_especiais_fmt": "Total proventos e descontos selecionados",
-                        "total_liquido_fmt": "D-266.6 - Total salário",
+                        "total_liquido_fmt": "D-266.6 - T. salário",
                         **{c + "_fmt": c for c in COLUNAS_ESPECIAIS.keys()},
                         "C-152.0 - sub t_fmt": "C-152.0 - sub t",
                         "C-152.0 - Sal. a pagar_fmt": "C-152.0 - Sal. a pagar",
@@ -947,7 +947,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                     )
 
                 # Criar dicionário da linha de totais
-                linha_total = {"Filial": "", "Filial": "TOTAL GERAL"}
+                linha_total = {"Filial": "", "Filial": "T. GERAL"}
 
                 # Para cada coluna monetária, soma
                 for col in colunas_monetarias:
@@ -963,7 +963,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         df_totais, df_pdf, on="Filial", how="outer"
                     ).fillna(0)
 
-                    df_totais["Funcionários"] = df_totais["Funcionários"].astype(int)
+                    df_totais["Func."] = df_totais["Func."].astype(int)
 
                 # Outras colunas numéricas não-R$ (se existirem)
                 colunas_numericas = [
@@ -978,8 +978,8 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 # Adicionar linha ao final do dataframe
                 columns = list(df_resumo_view.columns)
 
-                if "Funcionários" in df_totais.columns:
-                    columns = ["Funcionários"] + columns
+                if "Func." in df_totais.columns:
+                    columns = ["Func."] + columns
 
                 df_totais = df_totais[columns].copy()
                 df_totais.loc[len(df_totais)] = linha_total
@@ -1048,7 +1048,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
 
                 df_total = pd.DataFrame(
                     {
-                        "filial": ["TOTAL GERAL"],
+                        "filial": ["T. GERAL"],
                         "prolabore": [total_prolabore],
                         "inss": [total_inss],
                         "total_liquido": [total_liquido],
@@ -1068,7 +1068,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
 
                 # Ordenar mantendo TOTAL GERAL no final
                 df_extra_fmt["__ordem__"] = df_extra_fmt["filial"].apply(
-                    lambda x: (999, "") if x == "TOTAL GERAL" else sort_buffon(x)
+                    lambda x: (999, "") if x == "T. GERAL" else sort_buffon(x)
                 )
                 df_extra_fmt = df_extra_fmt.sort_values("__ordem__").drop(
                     columns="__ordem__"
@@ -1103,143 +1103,177 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 ).apply(bold_last_row, axis=1)
 
                 st.dataframe(df_extra_fmt_styled, use_container_width=True)
+                # ===============================
+                # 🔹 DOWNLOADS
+                # ===============================
+                output = io.BytesIO()
 
-            # ===============================
-            # 🔹 DOWNLOADS
-            # ===============================
-            output = io.BytesIO()
-
-            # --- Preparar df_totais para download ---
-            df_download_totais = df_totais.reset_index().copy()
-
-            # --- Preparar df_extra ---
-            df_download_extra = df_extra_fmt.reset_index().copy()
-
-            df_download_extra = df_download_extra.sort_values(
-                by="Filial", key=lambda col: col.map(sort_buffon)
-            )
-
-            HEADER_NUMBERS = {
-                "C-270.4 - INSS": "10",
-                "C-147.3 - IRF rec.": "11",
-                "C-275.5 - V.T.": "12",
-                "C-297.6 - Farm.": "13",
-                "C-51.5 - Ad. Sal.": "90",
-                "C-51.5 - Desc. Ad. Sal.": "91",
-                "C-2267.5 - Confissao de dívida": "150",
-                "C-142.2 - P.Alim.": "15",
-                "C-297.6 - Pl. Saúde": "16",
-                "C-146.5 - Sind. Rec.": "17",
-                "C-302.6 - Cesta Basica": "18",
-                "C-152.0 - sub t": "19",
-                "C-22667 - D-CAIXA (Desc.emprest. Consig.)": "152",
-            }
-
-            # Create Excel with 2 sheets
-            with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-
-                df_download_totais.to_excel(
-                    writer, index=False, sheet_name="Resumo Salários", startrow=3
-                )
-                df_download_extra.to_excel(
-                    writer, index=False, sheet_name="Calculo Prolabore"
+                # Preparar dataframes
+                df_download_totais = df_totais.reset_index().copy()
+                df_download_extra = df_extra_fmt.reset_index().copy()
+                df_download_extra = df_download_extra.sort_values(
+                    by="Filial", key=lambda col: col.map(sort_buffon)
                 )
 
-                # --------------------------------------
-                # 🔹 Add Titles to "Resumo Salários"
-                # --------------------------------------
-                workbook = writer.book
-                worksheet = writer.sheets["Resumo Salários"]
+                # Função para quebrar header
+                def separar_header_em_duas_linhas(header_list):
+                    codigos = []
+                    descricoes = []
+                    for col in header_list:
+                        if " - " not in col:  # Filial, Funcionários, Resultado, etc
+                            codigos.append("")
+                            descricoes.append(col)
+                        else:
+                            codigo, nome = col.split(" - ", 1)
+                            codigos.append(codigo.strip())
+                            descricoes.append(nome.strip())
+                    return codigos, descricoes
 
-                format_title = workbook.add_format(
-                    {
-                        "bold": True,
-                        "align": "left",
-                        "valign": "vcenter",
-                        "font_size": 14,
+                # Obter header original do df_totais
+                header_original = df_download_totais.columns.tolist()
+                header_codigos, header_nomes = separar_header_em_duas_linhas(
+                    header_original
+                )
+
+                with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+
+                    # Escreve o DF começando na linha 3 (0=linha4 na planilha)
+                    df_download_totais.to_excel(
+                        writer, index=False, sheet_name="Resumo Salários", startrow=4
+                    )
+
+                    workbook = writer.book
+                    worksheet = writer.sheets["Resumo Salários"]
+
+                    # FORMATOS
+                    format_title = workbook.add_format(
+                        {
+                            "bold": True,
+                            "align": "left",
+                            "valign": "vcenter",
+                            "font_size": 14,
+                        }
+                    )
+                    format_sub = workbook.add_format(
+                        {
+                            "bold": True,
+                            "align": "left",
+                            "valign": "vcenter",
+                            "font_size": 12,
+                        }
+                    )
+                    fmt_num = workbook.add_format(
+                        {"align": "center", "valign": "vcenter", "bold": True}
+                    )
+                    fmt_cont_cods = workbook.add_format(
+                        {"align": "left", "valign": "vcenter", "bold": True}
+                    )
+
+                    # ===============================
+                    # 🔹 ESCREVER AS LINHAS 1 E 2 DO HEADER
+                    # ===============================
+
+                    # Linha 1 → somente códigos
+                    for col_idx, codigo in enumerate(header_codigos):
+                        worksheet.write(3, col_idx, codigo, fmt_num)
+
+                    # Linha 2 → nomes
+                    for col_idx, nome in enumerate(header_nomes):
+                        worksheet.write(4, col_idx, nome, fmt_num)
+
+                    HEADER_NUMBERS = {
+                        "C-270.4 - INSS": "10",
+                        "C-147.3 - IRF rec.": "11",
+                        "C-275.5 - V.T.": "12",
+                        "C-297.6 - Farm.": "13",
+                        "C-51.5 - Ad. Sal.": "90",
+                        "C-51.5 - Desc. Ad. Sal.": "91",
+                        "C-2267.5 - Conf. dívida": "150",
+                        "C-142.2 - P.Alim.": "15",
+                        "C-297.6 - Pl. Saúde": "16",
+                        "C-146.5 - Sind. Rec.": "17",
+                        "C-302.6 - C.B.": "18",
+                        "C-152.0 - sub t": "19",
+                        "C-22667 - D-CAIXA (Desc.emprest. Consig.)": "152",
                     }
-                )
-                format_sub = workbook.add_format(
-                    {
-                        "bold": True,
-                        "align": "left",
-                        "valign": "vcenter",
-                        "font_size": 12,
-                    }
-                )
 
-                fmt_num = workbook.add_format(
-                    {
-                        "align": "center",
-                        "valign": "vcenter",
-                        "bold": True,
-                    }
-                )
+                    col_names = df_download_totais.columns.tolist()
 
-                fmt_cont_cods = workbook.add_format(
-                    {
-                        "align": "left",
-                        "valign": "vcenter",
-                        "bold": True,
-                    }
-                )
+                    for col_idx, col_name in enumerate(col_names):
+                        codigo = HEADER_NUMBERS.get(col_name, "")
+                        worksheet.write(2, col_idx, codigo, fmt_num)
 
-                col_names = df_download_totais.columns.tolist()
+                    # Aplica o título "Códigos contábeis" apenas sobre as duas primeiras colunas
+                    worksheet.merge_range("A3:C3", "Códigos contábeis", fmt_cont_cods)
+                    # ===============================
+                    # 🔹 TITULOS DO DOCUMENTO
+                    # ===============================
+                    worksheet.merge_range(
+                        "A1:G1",
+                        "COMERCIAL BUFFON COMB. E TRANSPORTES LTDA",
+                        format_title,
+                    )
 
-                for col_idx, col_name in enumerate(col_names):
-                    numero = HEADER_NUMBERS.get(col_name, "")
-                    worksheet.write(2, col_idx, numero, fmt_num)
+                    last_row_totais = len(df_download_totais) + 6
 
-                worksheet.merge_range("A3:B3", "Códigos contábeis", fmt_cont_cods)
+                    worksheet.write(last_row_totais + 1, 0, " ")
 
-                # Write titles
-                worksheet.merge_range(
-                    "A1:G1", "COMERCIAL BUFFON COMB. E TRANSPORTES LTDA", format_title
-                )
+                    format_section = workbook.add_format(
+                        {"bold": True, "font_size": 12, "align": "left"}
+                    )
+                    worksheet.merge_range(
+                        last_row_totais + 3,
+                        2,
+                        last_row_totais + 3,
+                        4,
+                        "Cálculo de Pró-Labore",
+                        format_section,
+                    )
+                    df_download_extra.to_excel(
+                        writer,
+                        index=False,
+                        sheet_name="Resumo Salários",
+                        startrow=last_row_totais + 4,
+                        startcol=2,
+                    )
 
-                mes_csv = ss.get("csv_mes")
-                ano_csv = ss.get("csv_ano")
+                    mes_csv = ss.get("csv_mes")
+                    ano_csv = ss.get("csv_ano")
 
-                # Use previous month (MM/YYYY)
-                first_day_this_month = datetime.now().replace(day=1)
-                last_day_prev_month = first_day_this_month - timedelta(days=1)
-                mes_ano_excel = last_day_prev_month.strftime("%m/%Y")
+                    first_day_this_month = datetime.now().replace(day=1)
+                    last_day_prev_month = first_day_this_month - timedelta(days=1)
+                    mes_ano_excel = last_day_prev_month.strftime("%m/%Y")
 
+                    if mes_csv and ano_csv:
+                        mes_ano_excel = f"{mes_csv}/{ano_csv}"
+
+                    worksheet.merge_range(
+                        "A2:G2", f"SALÁRIOS REFERENTES MÊS {mes_ano_excel}", format_sub
+                    )
+
+                    # Bold na última linha
+                    last_fmt = workbook.add_format({"bold": True})
+                    last_row = len(df_download_totais)
+                    worksheet.set_row(last_row + 4, None, last_fmt)
+
+                # Gerar bytes
+                xlsx_data = output.getvalue()
+
+                # Nome do arquivo
                 if mes_csv and ano_csv:
-                    mes_ano_excel = f"{mes_csv}/{ano_csv}"
+                    nome_arquivo = f"resumo_salarios_buffon_{mes_csv}-{ano_csv}.xlsx"
+                else:
+                    mes_ano = last_day_prev_month.strftime("%m-%Y")
+                    nome_arquivo = f"resumo_salarios_buffon_{mes_ano}.xlsx"
 
-                worksheet.merge_range(
-                    "A2:G2", f"SALÁRIOS REFERENTES MÊS {mes_ano_excel}", format_sub
+                # Botão de download
+                st.download_button(
+                    label=":material/download: Baixar",
+                    data=xlsx_data,
+                    file_name=nome_arquivo,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
                 )
-
-                last_fmt = workbook.add_format({"bold": True})
-
-                # Descobrir número total de linhas do DF
-                last_row = len(df_download_totais)
-
-                # Como seu DF começa em startrow=1, somamos +1
-                excel_row = last_row + 3
-
-                # Tornar toda a linha em bold
-                worksheet.set_row(excel_row, None, last_fmt)
-
-            # Save bytes
-            xlsx_data = output.getvalue()
-
-            if mes_csv and ano_csv:
-                nome_arquivo = f"resumo_salarios_buffon_{mes_csv}-{ano_csv}.xlsx"
-            else:
-                mes_ano = last_day_prev_month.strftime("%m-%Y")
-                nome_arquivo = f"resumo_salarios_buffon_{mes_ano}.xlsx"
-
-            # Download button
-            st.download_button(
-                label=":material/download: Baixar",
-                data=xlsx_data,
-                file_name=nome_arquivo,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary",
-            )
 
         except Exception as e:
             st.error("Ocorreu um erro ao processar os dados extraídos.")
