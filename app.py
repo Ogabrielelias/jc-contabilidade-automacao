@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import fitz
 import io
 import csv
 import re
@@ -54,6 +55,22 @@ def sort_tipo(value):
     return order.get(value, 99)
 
 
+def detectar_filial(texto):
+    match = regex_filial.search(texto)
+    if not match:
+        return None
+    tipo = match.group(1).capitalize()
+    numero = match.group(2)
+    return f"Filial {int(numero) - 1}" if tipo == "Filial" else "Matriz"
+
+
+def detectar_funcionarios(texto):
+    match = regex_funcionarios.search(texto)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
 st.set_page_config(page_title="JC Contabilidade - Postos Buffon", layout="wide")
 
 st.markdown(
@@ -76,11 +93,43 @@ st.markdown("<hr style='padding:0;margin:16px 0;'>", unsafe_allow_html=True)
 
 with st.container(border=True):
     st.header("Postos Buffon - Folha de Salários")
-    st.write(
-        "Envie aqui o arquivo **CSV original** recebido por e-mail."
-        "O sistema faz a leitura automática do formato e extrai as informações contábeis."
-    )
-    uploaded_file = st.file_uploader("Selecione o arquivo CSV", type=["csv"])
+
+    upload_cols = st.columns(2)
+
+    with upload_cols[0]:
+        st.write("Envie aqui o arquivo **CSV** para extrair as informações contábeis.")
+        uploaded_file = st.file_uploader("Selecione o arquivo CSV", type=["csv"])
+
+    with upload_cols[1]:
+        st.write(
+            "Envie aqui o arquivo **PDF** para agregar as informações de funcionários de cada filial."
+        )
+        pdf_file = st.file_uploader("Selecione o arquivo PDF", type=["pdf"])
+
+    regex_filial = re.compile(r"RESUMO\s+(Filial|Matriz):\s*(\d+)", re.IGNORECASE)
+    regex_funcionarios = re.compile(r"Nesta\s+Folha\s+(\d+)", re.IGNORECASE)
+
+    if pdf_file:
+        doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
+        resultados = []
+
+        for i, page in enumerate(doc):
+            text = page.get_text()
+            filial = detectar_filial(text)
+            funcionarios = detectar_funcionarios(text)
+            if filial is not None:
+                resultados.append(
+                    {
+                        "Filial": filial,
+                        "Funcionários": (
+                            funcionarios
+                            if funcionarios is not None
+                            else "Não encontrado"
+                        ),
+                    }
+                )
+
+        df_pdf = pd.DataFrame(resultados)
 
     if uploaded_file is not None:
         try:
@@ -861,6 +910,13 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         .replace("X", ".")
                     )
 
+                if "df_pdf" in locals() and not df_pdf.empty:
+                    df_totais = pd.merge(
+                        df_totais, df_pdf, on="Filial", how="outer"
+                    ).fillna(0)
+
+                    df_totais["Funcionários"] = df_totais["Funcionários"].astype(int)
+
                 # Outras colunas numéricas não-R$ (se existirem)
                 colunas_numericas = [
                     col
@@ -872,8 +928,17 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                     linha_total[col] = df_totais[col].sum()
 
                 # Adicionar linha ao final do dataframe
-                df_totais = df_totais[list(df_resumo_view.columns)].copy()
+                columns = list(df_resumo_view.columns)
+
+                if "Funcionários" in df_totais.columns:
+                    columns = ["Funcionários"] + columns
+
+                df_totais = df_totais[columns].copy()
                 df_totais.loc[len(df_totais)] = linha_total
+
+                df_totais = df_totais.sort_values(
+                    by="Filial", key=lambda col: col.map(sort_filial)
+                )
 
                 df_totais.set_index("Filial", inplace=True)
 
