@@ -5,6 +5,7 @@ import io
 import csv
 import re
 from datetime import datetime, timedelta
+from streamlit import session_state as ss
 
 
 def mapear_filial(valor):
@@ -105,7 +106,7 @@ with st.container(border=True):
             "Envie aqui o arquivo **PDF** para agregar as informações de funcionários de cada filial."
         )
         pdf_file = st.file_uploader("Selecione o arquivo PDF", type=["pdf"])
-
+            
     regex_filial = re.compile(r"RESUMO\s+(Filial|Matriz):\s*(\d+)", re.IGNORECASE)
     regex_funcionarios = re.compile(r"Nesta\s+Folha\s+(\d+)", re.IGNORECASE)
 
@@ -129,7 +130,46 @@ with st.container(border=True):
                     }
                 )
 
+        if len(resultados) == 0:
+            st.warning(
+                "Nenhuma filial foi detectada no arquivo PDF enviado. "
+                "Verifique se o arquivo enviado está correto."
+            )
+
         df_pdf = pd.DataFrame(resultados)
+
+        if uploaded_file:
+          # Extrair ano e mês do CSV (padrão 202XMM)
+          csv_name = uploaded_file.name
+          m_csv = re.search(r"202\d(\d{2})", csv_name)
+          ano_csv = re.search(r"20\d{2}", csv_name)
+
+          csv_mes = None
+          csv_ano = None
+
+          if m_csv and ano_csv:
+              csv_ano = ano_csv.group(0)
+              csv_mes = m_csv.group(1)
+
+          ss['csv_mes'] = csv_mes
+          ss['csv_ano'] = csv_ano
+
+          # Extrair ano e mês do PDF (padrão MM 202X)
+          pdf_name = pdf_file.name
+          m_pdf = re.search(r"(\d{1,2})\s+20\d{2}", pdf_name)
+          ano_pdf = re.search(r"202\d", pdf_name)
+
+          pdf_mes = None
+          pdf_ano = None
+
+          if m_pdf and ano_pdf:
+              pdf_mes = m_pdf.group(1).zfill(2)
+              pdf_ano = ano_pdf.group(0)
+
+          if not (csv_ano == pdf_ano and csv_mes == pdf_mes) and pdf_mes and pdf_ano and csv_ano and csv_mes:
+              st.warning(
+                  f"Os arquivos enviados parecem ser de meses diferentes, confira suas datas: CSV ({csv_mes}/{csv_ano}) x PDF ({pdf_mes}/{pdf_ano})"
+              )
 
     if uploaded_file is not None:
         try:
@@ -1172,9 +1212,14 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
             # Save bytes
             xlsx_data = output.getvalue()
 
-            # --- Filename with previous month ---
-            mes_ano = last_day_prev_month.strftime("%m-%Y")
-            nome_arquivo = f"resumo_salarios_buffon_{mes_ano}.xlsx"
+            mes_csv = ss.get('csv_mes')
+            ano_csv = ss.get('csv_ano')
+
+            if mes_csv and ano_csv:
+                nome_arquivo = f"resumo_salarios_buffon_{mes_csv}-{ano_csv}.xlsx"
+            else:
+              mes_ano = last_day_prev_month.strftime("%m-%Y")
+              nome_arquivo = f"resumo_salarios_buffon_{mes_ano}.xlsx"
 
             # Download button
             st.download_button(
