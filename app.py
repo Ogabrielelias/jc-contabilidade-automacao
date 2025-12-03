@@ -1197,10 +1197,16 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                     "A1:G1", "COMERCIAL BUFFON COMB. E TRANSPORTES LTDA", format_title
                 )
 
+                mes_csv = ss.get("csv_mes")
+                ano_csv = ss.get("csv_ano")
+
                 # Use previous month (MM/YYYY)
                 first_day_this_month = datetime.now().replace(day=1)
                 last_day_prev_month = first_day_this_month - timedelta(days=1)
                 mes_ano_excel = last_day_prev_month.strftime("%m/%Y")
+
+                if mes_csv and ano_csv:
+                    mes_ano_excel = f"{mes_csv}/{ano_csv}"
 
                 worksheet.merge_range(
                     "A2:G2", f"SALÁRIOS REFERENTES MÊS {mes_ano_excel}", format_sub
@@ -1219,9 +1225,6 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
 
             # Save bytes
             xlsx_data = output.getvalue()
-
-            mes_csv = ss.get("csv_mes")
-            ano_csv = ss.get("csv_ano")
 
             if mes_csv and ano_csv:
                 nome_arquivo = f"resumo_salarios_buffon_{mes_csv}-{ano_csv}.xlsx"
