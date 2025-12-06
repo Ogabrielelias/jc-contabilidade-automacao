@@ -88,7 +88,14 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("JC Contabilidade")
+header_cols = st.columns([0.8, 0.2], vertical_alignment="center")
+
+with header_cols[0]:
+    st.title("JC Contabilidade")
+
+# with header_cols[1]:
+#     if st.button(":material/help: Ajuda", use_container_width=True):
+#         st.switch_page("pages/ajuda.py")
 
 st.markdown("<hr style='padding:0;margin:16px 0;'>", unsafe_allow_html=True)
 
@@ -100,7 +107,9 @@ with st.container(border=True):
     upload_cols = st.columns(2)
 
     with upload_cols[0]:
-        st.write("Envie aqui o arquivo **CSV** para extrair as informações contábeis.")
+        st.write(
+            "Envie aqui o arquivo **CSV (Planilha Excel)** para extrair as informações contábeis."
+        )
         uploaded_file = st.file_uploader("Selecione o arquivo CSV", type=["csv"])
 
     with upload_cols[1]:
@@ -505,11 +514,11 @@ if uploaded_file is not None and "df_final" in locals():
                         "20091",
                     ],
                     "C-146.5 - Sind. Rec.": ["933", "11992", "20078", "20088", "20090"],
-                    "C-302.6 - C.B.": ["258", "20080"],
+                    "C-302.6 - Cest. Bas.": ["258", "20080"],
                     "D-54.0 - Sal. Fam.": ["907"],
                     "D-53.1 - Sal. Mat.": ["130"],
-                    "D-52.3 - ad 13° sal.": ["169", "170", "171", "173"],
-                    "C-22667 - D-CAIXA (Desc.emprest. Consig.)": ["20086"],
+                    "D-52.3 - Ad 13° Sal.": ["169", "170", "171", "173"],
+                    "C-22667 - D-CAIXA (Desc. emp. Consig.)": ["20086"],
                 }
                 # ==========================================================
                 # 🔹 Construir opções no formato "codigo - descricao"
@@ -560,7 +569,7 @@ Você pode ajustar livremente quais códigos pertencem a cada coluna.
 Qualquer alteração feita aqui afeta diretamente os cálculos da tabela abaixo, incluindo:
 
 - o total de salário líquido (**D-266.6 - T. salário**)
-- o subtotal (**C-152.0 - sub t**)  
+- o subtotal (**C-152.0 - Sub. T.**)  
 - o salário a pagar (**C-152.0 - Sal. a pagar**)  
 - o resultado final (**Resultado**)  
 - e todos os totais gerais
@@ -815,12 +824,12 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                     )
 
                 # Subt = Total salário - soma das colunas especiais
-                df_soma["C-152.0 - sub t"] = df_soma["D-266.6_num"] - df_soma[
+                df_soma["C-152.0 -  Sub. T."] = df_soma["D-266.6_num"] - df_soma[
                     [c + "_num" for c in colunas_calc_sub_t]
                 ].sum(axis=1)
 
                 # Formatar
-                df_soma["C-152.0 - sub t_fmt"] = df_soma["C-152.0 - sub t"].apply(
+                df_soma["C-152.0 -  Sub. T._fmt"] = df_soma["C-152.0 -  Sub. T."].apply(
                     fmt_real
                 )
 
@@ -848,7 +857,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
 
                 # Calcular Salário a Pagar
                 df_soma["C-152.0 - Sal. a pagar"] = (
-                    df_soma["C-152.0 - sub t"] + df_soma["soma_especiais_sal_pagar"]
+                    df_soma["C-152.0 -  Sub. T."] + df_soma["soma_especiais_sal_pagar"]
                 )
 
                 # Formatar
@@ -888,7 +897,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         "total_liquido_fmt",
                     ]
                     + colunas_fmt
-                    + ["C-152.0 - sub t_fmt"]
+                    + ["C-152.0 -  Sub. T._fmt"]
                     + colunas_fmt_2
                     + ["C-152.0 - Sal. a pagar_fmt"]
                     + colunas_fmt_3
@@ -899,7 +908,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         "total_codigos_especiais_fmt": "Total proventos e descontos selecionados",
                         "total_liquido_fmt": "D-266.6 - T. salário",
                         **{c + "_fmt": c for c in COLUNAS_ESPECIAIS.keys()},
-                        "C-152.0 - sub t_fmt": "C-152.0 - sub t",
+                        "C-152.0 -  Sub. T._fmt": "C-152.0 -  Sub. T.",
                         "C-152.0 - Sal. a pagar_fmt": "C-152.0 - Sal. a pagar",
                         "Resultado_fmt": "Resultado",
                     }
@@ -1115,6 +1124,12 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                     by="Filial", key=lambda col: col.map(sort_buffon)
                 )
 
+                col_filial_original = df_download_totais["Filial"].copy()
+
+                pos = len(df_download_totais.columns) - 2
+
+                df_download_totais.insert(pos, "Filial ", col_filial_original)
+
                 # Função para quebrar header
                 def separar_header_em_duas_linhas(header_list):
                     codigos = []
@@ -1140,6 +1155,14 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                     # Escreve o DF começando na linha 3 (0=linha4 na planilha)
                     df_download_totais.to_excel(
                         writer, index=False, sheet_name="Resumo Salários", startrow=4
+                    )
+
+                    df_download_salario = df_totais[
+                        ["Func.", "D-266.6 - T. salário"]
+                    ].reset_index()
+
+                    df_download_salario.to_excel(
+                        writer, index=False, sheet_name="Resumo Salários e Funcionários"
                     )
 
                     workbook = writer.book
@@ -1192,9 +1215,9 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         "C-142.2 - P.Alim.": "15",
                         "C-297.6 - Pl. Saúde": "16",
                         "C-146.5 - Sind. Rec.": "17",
-                        "C-302.6 - C.B.": "18",
-                        "C-152.0 - sub t": "19",
-                        "C-22667 - D-CAIXA (Desc.emprest. Consig.)": "152",
+                        "C-302.6 - Cest. Bas.": "18",
+                        "C-152.0 -  Sub. T.": "19",
+                        "C-22667 - D-CAIXA (Desc. emp. Consig.)": "152",
                     }
 
                     col_names = df_download_totais.columns.tolist()
