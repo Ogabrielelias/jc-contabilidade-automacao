@@ -1157,13 +1157,16 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         writer, index=False, sheet_name="Resumo Salários", startrow=4
                     )
 
-                    df_download_salario = df_totais[
-                        ["Func.", "D-266.6 - T. salário"]
-                    ].reset_index()
+                    if "Func." in df_totais.columns:
+                        df_download_salario = df_totais[
+                            ["Func.", "D-266.6 - T. salário"]
+                        ].reset_index()
 
-                    df_download_salario.to_excel(
-                        writer, index=False, sheet_name="Resumo Salários e Funcionários"
-                    )
+                        df_download_salario.to_excel(
+                            writer,
+                            index=False,
+                            sheet_name="Resumo Salários e Funcionários",
+                        )
 
                     workbook = writer.book
                     worksheet = writer.sheets["Resumo Salários"]
