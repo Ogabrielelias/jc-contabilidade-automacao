@@ -1,11 +1,67 @@
 import streamlit as st
 import pandas as pd
 import fitz
+import httpx
 import io
 import csv
 import re
 from datetime import datetime, timedelta
 from streamlit import session_state as ss
+from supabase import create_client
+import json
+
+SUPABASE_URL = st.secrets["supabase_url"]
+SUPABASE_KEY = st.secrets["supabase_key"]
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+def has_supabase_error(resp):
+    if hasattr(resp, "error") and resp.error is not None:
+        st.error(f"Erro ao carregar informações do banco de dados.")
+        print(f"{resp.error.message}")
+        return True
+    return False
+
+
+def salvar_config(chave, valor):
+    try:
+        supabase.table("configuracoes_codigos").upsert(
+            {"chave": chave, "valor": valor}, on_conflict="chave"
+        ).execute()
+    except httpx.HTTPError as e:
+        st.toast(
+            f"Erro conectar no banco de dados para salvar os códigos contábeis. Se o erro persistir contate o suporte."
+        )
+        print(e)
+    except Exception as e:
+        st.toast(
+            f"Erro inesperado ao salvar os códigos contábeis no banco de dados. Se o erro persistir contate o suporte."
+        )
+        print(e)
+
+
+def carregar_config(chave, default=None):
+    try:
+        resp = (
+            supabase.table("configuracoes_codigos")
+            .select("valor")
+            .eq("chave", chave)
+            .execute()
+        )
+        if resp.data and not has_supabase_error(resp):
+            return resp.data[0]["valor"]
+    except httpx.HTTPError as e:
+        st.toast(
+            f"Erro ao carregar os códigos contábeis do banco de dados, será usado códigos padrões. Se o erro persistir contate o suporte."
+        )
+        print(e)
+    except Exception as e:
+        st.toast(
+            f"Erro inesperado ao carregar os códigos contábeis do banco de dados. Se o erro persistir contate o suporte."
+        )
+        print(e)
+    return default
 
 
 def mapear_filial(valor):
@@ -94,7 +150,7 @@ with header_cols[0]:
     st.title("JC Contabilidade")
 
 # with header_cols[1]:
-#     if st.button(":material/help: Ajuda", use_container_width=True):
+#     if st.button(":material/help: Ajuda", width='stretch'):
 #         st.switch_page("pages/ajuda.py")
 
 st.markdown("<hr style='padding:0;margin:16px 0;'>", unsafe_allow_html=True)
@@ -451,7 +507,7 @@ if uploaded_file is not None and "df_final" in locals():
 
                 df_filtrado.reset_index(drop=True, inplace=True)
 
-                st.dataframe(df_filtrado, use_container_width=True)
+                st.dataframe(df_filtrado, width="stretch")
 
             # ===============================
             # PROVENTOS POR FILIAL
@@ -478,48 +534,79 @@ if uploaded_file is not None and "df_final" in locals():
                     .replace("X", ".")
                 )
 
-                COLUNAS_ESPECIAIS = {
-                    "C-270.4 - INSS": ["901"],
-                    "C-147.3 - IRF rec.": ["941"],
-                    "C-275.5 - V.T.": ["93", "240"],
-                    "C-297.6 - Farm.": ["231"],
-                    "C-51.5 - Ad. Sal.": [
-                        "30",
-                        "31",
-                        "32",
-                        "33",
-                        "34",
-                        "35",
-                        "36",
-                        "37",
-                        "38",
-                        "150",
-                        "151",
-                        "152",
-                        "153",
-                        "154",
-                        "155",
-                        "156",
-                        "157",
-                        "158",
+                COLUNAS_ESPECIAIS = carregar_config(
+                    "COLUNAS_ESPECIAIS",
+                    default={
+                        "C-270.4 - INSS": ["901"],
+                        "C-147.3 - IRF rec.": ["941"],
+                        "C-275.5 - V.T.": ["93", "240"],
+                        "C-297.6 - Farm.": ["231"],
+                        "C-51.5 - Ad. Sal.": [
+                            "30",
+                            "31",
+                            "32",
+                            "33",
+                            "34",
+                            "35",
+                            "36",
+                            "37",
+                            "38",
+                            "150",
+                            "151",
+                            "152",
+                            "153",
+                            "154",
+                            "155",
+                            "156",
+                            "157",
+                            "158",
+                        ],
+                        "C-51.5 - Desc. Ad. Sal.": ["44"],
+                        "C-2267.5 - Conf. dívida": ["20053"],
+                        "C-142.2 - P.Alim.": ["908"],
+                        "C-297.6 - Pl. Saúde": [
+                            "233",
+                            "241",
+                            "242",
+                            "262",
+                            "20091",
+                        ],
+                        "C-146.5 - Sind. Rec.": [
+                            "933",
+                            "11992",
+                            "20078",
+                            "20088",
+                            "20090",
+                        ],
+                        "C-302.6 - Cest. Bas.": ["258", "20080"],
+                        "D-54.0 - Sal. Fam.": ["907"],
+                        "D-53.1 - Sal. Mat.": ["130"],
+                        "D-52.3 - Ad 13° Sal.": ["169", "170", "171", "173"],
+                        "C-22667 - D-CAIXA (Desc. emp. Consig.)": ["20086"],
+                    },
+                )
+
+                codigos_padrao = carregar_config(
+                    "codigos_padrao",
+                    default=[
+                        "17",
+                        "130",
+                        "169",
+                        "170",
+                        "171",
+                        "173",
+                        "907",
+                        "3",
+                        "6",
+                        "19",
+                        "22",
+                        "23",
+                        "24",
+                        "911",
+                        "938",
                     ],
-                    "C-51.5 - Desc. Ad. Sal.": ["44"],
-                    "C-2267.5 - Conf. dívida": ["20053"],
-                    "C-142.2 - P.Alim.": ["908"],
-                    "C-297.6 - Pl. Saúde": [
-                        "233",
-                        "241",
-                        "242",
-                        "262",
-                        "20091",
-                    ],
-                    "C-146.5 - Sind. Rec.": ["933", "11992", "20078", "20088", "20090"],
-                    "C-302.6 - Cest. Bas.": ["258", "20080"],
-                    "D-54.0 - Sal. Fam.": ["907"],
-                    "D-53.1 - Sal. Mat.": ["130"],
-                    "D-52.3 - Ad 13° Sal.": ["169", "170", "171", "173"],
-                    "C-22667 - D-CAIXA (Desc. emp. Consig.)": ["20086"],
-                }
+                )
+
                 # ==========================================================
                 # 🔹 Construir opções no formato "codigo - descricao"
                 # ==========================================================
@@ -588,24 +675,6 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         key=lambda x: int(x),
                     )
 
-                    codigos_padrao = [
-                        "17",
-                        "130",
-                        "169",
-                        "170",
-                        "171",
-                        "173",
-                        "907",
-                        "3",
-                        "6",
-                        "19",
-                        "22",
-                        "23",
-                        "24",
-                        "911",
-                        "938",
-                    ]
-
                     codigos_existentes = (
                         df_final["codigo"].astype(str).unique().tolist()
                     )
@@ -644,6 +713,8 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                             codigos_selecionados = [
                                 codigo_map[x] for x in codigos_select_fmt
                             ]
+
+                            salvar_config("codigos_padrao", codigos_selecionados)
 
                         df_codigos_especiais = (
                             df_final[
@@ -729,6 +800,8 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
 
                     # Atualiza COLUNAS_ESPECIAIS com os valores selecionados
                     COLUNAS_ESPECIAIS = codigos_escolhidos
+
+                    salvar_config("COLUNAS_ESPECIAIS", COLUNAS_ESPECIAIS)
 
                 # ==========================================================
                 # FUNÇÃO PARA SOMAR CÓDIGOS POR FILIAL
@@ -1018,7 +1091,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                     ]
                 ).apply(bold_last_row, axis=1)
                 # Exibir tabela com linha de total
-                st.dataframe(df_resumo_styled, use_container_width=True)
+                st.dataframe(df_resumo_styled, width="stretch")
 
                 st.subheader("Resumo Prolabore")
                 st.write("")
@@ -1111,7 +1184,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                     ]
                 ).apply(bold_last_row, axis=1)
 
-                st.dataframe(df_extra_fmt_styled, use_container_width=True)
+                st.dataframe(df_extra_fmt_styled, width="stretch")
                 # ===============================
                 # 🔹 DOWNLOADS
                 # ===============================

@@ -3,3 +3,5 @@ pandas
 xlsxwriter
 openpyxl
 PyMuPDF
+supabase
+httpx

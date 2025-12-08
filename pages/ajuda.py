@@ -23,7 +23,7 @@ with header_cols[0]:
     st.title("JC Contabilidade")
 
 with header_cols[1]:
-    if st.button(":material/arrow_back: Voltar", use_container_width=True):
+    if st.button(":material/arrow_back: Voltar", width="stretch"):
         st.switch_page("app.py")
 
 st.markdown("<hr style='padding:0;margin:16px 0;'>", unsafe_allow_html=True)
