@@ -128,6 +128,35 @@ def detectar_funcionarios(texto):
     return int(match.group(1))
 
 
+def detectar_salario(texto):
+    match = regex_salario.search(texto)
+    if match:
+        return match.group(1)
+    return None
+
+
+def br_to_float(v):
+    return (
+        str(v).replace("R$", "").replace(".", "").replace(",", ".").strip()
+        if pd.notna(v)
+        else "0"
+    )
+
+
+def separar_header_em_duas_linhas(header_list):
+    codigos = []
+    descricoes = []
+    for col in header_list:
+        if " - " not in col:
+            codigos.append("")
+            descricoes.append(col)
+        else:
+            codigo, nome = col.split(" - ", 1)
+            codigos.append(codigo.strip())
+            descricoes.append(nome.strip())
+    return codigos, descricoes
+
+
 st.set_page_config(page_title="JC Contabilidade - Postos Buffon", layout="wide")
 
 st.markdown(
@@ -172,10 +201,42 @@ with st.container(border=True):
         st.write(
             "Envie aqui o arquivo **PDF** para agregar as informações de funcionários de cada filial."
         )
-        pdf_file = st.file_uploader("Selecione o arquivo PDF", type=["pdf"])
+        pdf_file = st.file_uploader(
+            "Selecione o arquivo PDF", type=["pdf"], key="pdf_funcionarios"
+        )
+
+    with upload_cols[0]:
+        st.write(
+            "Envie aqui o arquivo **PDF** extrair as informações do FGTS de cada filial."
+        )
+        pdf_quebra_file = st.file_uploader(
+            "Selecione o arquivo PDF", type=["pdf"], key="pdf_quebra"
+        )
 
     regex_filial = re.compile(r"RESUMO\s+(Filial|Matriz):\s*(\d+)", re.IGNORECASE)
     regex_funcionarios = re.compile(r"Nesta\s+Folha\s+(\d+)", re.IGNORECASE)
+    regex_salario = re.compile(
+        r"Mensal\s*\+\s*13º\s*Salário\s+([\d\.]+,\d{2})", re.IGNORECASE
+    )
+
+    if pdf_quebra_file:
+        doc_quebra = fitz.open(stream=pdf_quebra_file.read(), filetype="pdf")
+        resultados_quebra = []
+
+        for i, page in enumerate(doc_quebra):
+            text = page.get_text()
+            filial = detectar_filial(text)
+            salario = detectar_salario(text)
+
+            if filial is not None:
+                resultados_quebra.append(
+                    {
+                        "Filial": filial,
+                    }
+                )
+
+            if salario is not None and resultados_quebra[-1].get("Salário") is None:
+                resultados_quebra[-1]["Salário"] = salario
 
     if pdf_file:
         doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
@@ -205,7 +266,7 @@ with st.container(border=True):
 
         df_pdf = pd.DataFrame(resultados)
 
-        if uploaded_file:
+        if uploaded_file and pdf_file and pdf_quebra_file:
             # Extrair ano e mês do CSV (padrão 202XMM)
             csv_name = uploaded_file.name
             m_csv = re.search(r"202\d(\d{2})", csv_name)
@@ -233,15 +294,33 @@ with st.container(border=True):
                 pdf_mes = m_pdf.group(1).zfill(2)
                 pdf_ano = ano_pdf.group(0)
 
+            pdf_q_name = pdf_quebra_file.name
+            mq_pdf = re.search(r"(\d{1,2})\s+20\d{2}", pdf_q_name)
+            anoq_pdf = re.search(r"202\d", pdf_q_name)
+
+            pdf_qmes = None
+            pdf_qano = None
+
+            if mq_pdf and anoq_pdf:
+                pdf_qmes = mq_pdf.group(1).zfill(2)
+                pdf_qano = anoq_pdf.group(0)
+
             if (
-                not (csv_ano == pdf_ano and csv_mes == pdf_mes)
+                not (
+                    csv_ano == pdf_ano
+                    and csv_mes == pdf_mes
+                    and csv_ano == pdf_qano
+                    and csv_mes == pdf_qmes
+                )
                 and pdf_mes
                 and pdf_ano
                 and csv_ano
                 and csv_mes
+                and pdf_qmes
+                and pdf_qano
             ):
                 st.warning(
-                    f"Os arquivos enviados parecem ser de meses diferentes, confira suas datas: CSV ({csv_mes}/{csv_ano}) x PDF ({pdf_mes}/{pdf_ano})"
+                    f":orange[Os arquivos enviados parecem ser de meses diferentes, confira suas datas: Planilha Excel ({csv_mes}/{csv_ano}) x PDF Salários ({pdf_mes}/{pdf_ano}) x PDF Quebra ({pdf_qmes}/{pdf_qano})]"
                 )
 
     if uploaded_file is not None:
@@ -393,9 +472,16 @@ if uploaded_file is not None and "df_final" in locals():
 
         try:
 
-            tabs = st.tabs(["Resumo Salários", "Dados Extraídos"])
+            tabs = st.tabs(
+                [
+                    "Resumo Salários",
+                    "Extra caixa",
+                    "Resumo prolabore",
+                    "Dados Extraídos",
+                ]
+            )
 
-            with tabs[1]:
+            with tabs[3]:
                 st.write(
                     "Tabela com todos os lançamentos extraídos do arquivo. "
                     "Você pode filtrar por **filial** e **tipo (Provento, Desconto)**."
@@ -1093,6 +1179,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 # Exibir tabela com linha de total
                 st.dataframe(df_resumo_styled, width="stretch")
 
+            with tabs[2]:
                 st.subheader("Resumo Prolabore")
                 st.write("")
 
@@ -1185,194 +1272,378 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 ).apply(bold_last_row, axis=1)
 
                 st.dataframe(df_extra_fmt_styled, width="stretch")
-                # ===============================
-                # 🔹 DOWNLOADS
-                # ===============================
-                output = io.BytesIO()
 
-                # Preparar dataframes
-                df_download_totais = df_totais.reset_index().copy()
-                df_download_extra = df_extra_fmt.reset_index().copy()
-                df_download_extra = df_download_extra.sort_values(
-                    by="Filial", key=lambda col: col.map(sort_buffon)
-                )
+            if "resultados_quebra" in locals():
+                df_quebra = pd.DataFrame(resultados_quebra)
 
-                col_filial_original = df_download_totais["Filial"].copy()
+                st.write(df_quebra)
 
-                pos = len(df_download_totais.columns) - 2
+                with tabs[1]:
+                    st.subheader("Extra Caixa")
 
-                df_download_totais.insert(pos, "Filial ", col_filial_original)
+                    st.write("")
 
-                # Função para quebrar header
-                def separar_header_em_duas_linhas(header_list):
-                    codigos = []
-                    descricoes = []
-                    for col in header_list:
-                        if " - " not in col:  # Filial, Funcionários, Resultado, etc
-                            codigos.append("")
-                            descricoes.append(col)
-                        else:
-                            codigo, nome = col.split(" - ", 1)
-                            codigos.append(codigo.strip())
-                            descricoes.append(nome.strip())
-                    return codigos, descricoes
+                    if "df_quebra" in locals() and not df_quebra.empty:
+                        # Padronizar nome da filial (mesma lógica das outras tabelas)
+                        df_quebra["Filial"] = df_quebra["Filial"].apply(mapear_filial)
 
-                # Obter header original do df_totais
-                header_original = df_download_totais.columns.tolist()
-                header_codigos, header_nomes = separar_header_em_duas_linhas(
-                    header_original
-                )
-
-                with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-
-                    # Escreve o DF começando na linha 3 (0=linha4 na planilha)
-                    df_download_totais.to_excel(
-                        writer, index=False, sheet_name="Resumo Salários", startrow=4
-                    )
-
-                    if "Func." in df_totais.columns:
-                        df_download_salario = df_totais[
-                            ["Func.", "D-266.6 - T. salário"]
-                        ].reset_index()
-
-                        df_download_salario.to_excel(
-                            writer,
-                            index=False,
-                            sheet_name="Resumo Salários e Funcionários",
+                        df_quebra.rename(
+                            columns={"Salário": "D-271.2, C-145.7 - FGTS"}, inplace=True
                         )
 
-                    workbook = writer.book
-                    worksheet = writer.sheets["Resumo Salários"]
+                        # 🔹 Coluna D-266.6 - T. salário
+                        # reaproveita o valor do salário da quebra
+                        df_quebra = df_quebra.merge(
+                            df_totais.reset_index()[["Filial", "D-266.6 - T. salário"]],
+                            on="Filial",
+                            how="left",
+                        )
 
-                    # FORMATOS
-                    format_title = workbook.add_format(
-                        {
-                            "bold": True,
-                            "align": "left",
-                            "valign": "vcenter",
-                            "font_size": 14,
-                        }
-                    )
-                    format_sub = workbook.add_format(
-                        {
-                            "bold": True,
-                            "align": "left",
-                            "valign": "vcenter",
-                            "font_size": 12,
-                        }
-                    )
-                    fmt_num = workbook.add_format(
-                        {"align": "center", "valign": "vcenter", "bold": True}
-                    )
-                    fmt_cont_cods = workbook.add_format(
-                        {"align": "left", "valign": "vcenter", "bold": True}
-                    )
+                        df_quebra["D-266.6 - T. salário_num"] = (
+                            df_quebra["D-266.6 - T. salário"]
+                            .str.replace("R$", "", regex=False)
+                            .str.replace(".", "", regex=False)
+                            .str.replace(",", ".", regex=False)
+                            .astype(float)
+                        )
 
-                    # ===============================
-                    # 🔹 ESCREVER AS LINHAS 1 E 2 DO HEADER
-                    # ===============================
+                        df_quebra["D-269.1, C-162.7 - 13° sal"] = (
+                            df_quebra["D-266.6 - T. salário_num"] / 12
+                        )
 
-                    # Linha 1 → somente códigos
-                    for col_idx, codigo in enumerate(header_codigos):
-                        worksheet.write(3, col_idx, codigo, fmt_num)
+                        df_quebra["D-269.1, C-162.7 - 13° sal"] = df_quebra[
+                            "D-269.1, C-162.7 - 13° sal"
+                        ].apply(fmt_real)
 
-                    # Linha 2 → nomes
-                    for col_idx, nome in enumerate(header_nomes):
-                        worksheet.write(4, col_idx, nome, fmt_num)
+                        df_quebra["D-269.1, C-162.7 - 13° sal_num"] = (
+                            df_quebra["D-269.1, C-162.7 - 13° sal"]
+                            .str.replace("R$", "", regex=False)
+                            .str.replace(".", "", regex=False)
+                            .str.replace(",", ".", regex=False)
+                            .astype(float)
+                        )
 
-                    HEADER_NUMBERS = {
-                        "C-270.4 - INSS": "10",
-                        "C-147.3 - IRF rec.": "11",
-                        "C-275.5 - V.T.": "12",
-                        "C-297.6 - Farm.": "13",
-                        "C-51.5 - Ad. Sal.": "90",
-                        "C-51.5 - Desc. Ad. Sal.": "91",
-                        "C-2267.5 - Conf. dívida": "150",
-                        "C-142.2 - P.Alim.": "15",
-                        "C-297.6 - Pl. Saúde": "16",
-                        "C-146.5 - Sind. Rec.": "17",
-                        "C-302.6 - Cest. Bas.": "18",
-                        "C-152.0 -  Sub. T.": "19",
-                        "C-22667 - D-CAIXA (Desc. emp. Consig.)": "152",
-                    }
+                        df_quebra["D-1324.2, C-162.7 - 13° sal. 25,8%"] = (
+                            df_quebra["D-269.1, C-162.7 - 13° sal_num"] * 0.258
+                        ).apply(fmt_real)
 
-                    col_names = df_download_totais.columns.tolist()
+                        df_quebra["D-1324.2, C-162.7 - 13° sal. 25,8%_num"] = (
+                            df_quebra["D-1324.2, C-162.7 - 13° sal. 25,8%"]
+                            .str.replace("R$", "", regex=False)
+                            .str.replace(".", "", regex=False)
+                            .str.replace(",", ".", regex=False)
+                            .astype(float)
+                        )
 
-                    for col_idx, col_name in enumerate(col_names):
-                        codigo = HEADER_NUMBERS.get(col_name, "")
-                        worksheet.write(2, col_idx, codigo, fmt_num)
+                        df_quebra["Total prov 13°"] = (
+                            df_quebra["D-269.1, C-162.7 - 13° sal_num"]
+                            + df_quebra["D-1324.2, C-162.7 - 13° sal. 25,8%_num"]
+                        ).apply(fmt_real)
 
-                    # Aplica o título "Códigos contábeis" apenas sobre as duas primeiras colunas
-                    worksheet.merge_range("A3:C3", "Códigos contábeis", fmt_cont_cods)
-                    # ===============================
-                    # 🔹 TITULOS DO DOCUMENTO
-                    # ===============================
-                    worksheet.merge_range(
-                        "A1:G1",
-                        "COMERCIAL BUFFON COMB. E TRANSPORTES LTDA",
-                        format_title,
-                    )
+                        # Ordenar filiais no mesmo padrão
+                        df_quebra = df_quebra.sort_values(
+                            by="Filial", key=lambda col: col.map(sort_filial)
+                        )
 
-                    last_row_totais = len(df_download_totais) + 6
+                        cols_soma = df_quebra.columns.drop("Filial").tolist()
 
-                    worksheet.write(last_row_totais + 1, 0, " ")
+                        for col in cols_soma:
+                            df_quebra[col + "_num"] = df_quebra[col].apply(
+                                lambda x: float(br_to_float(x))
+                            )
 
-                    format_section = workbook.add_format(
-                        {"bold": True, "font_size": 12, "align": "left"}
-                    )
-                    worksheet.merge_range(
-                        last_row_totais + 3,
-                        2,
-                        last_row_totais + 3,
-                        4,
-                        "Cálculo de Pró-Labore",
-                        format_section,
-                    )
-                    df_download_extra.to_excel(
+                        total_geral = {"Filial": "TOTAL GERAL"}
+
+                        for col in cols_soma:
+                            total_geral[col] = df_quebra[col + "_num"].sum()
+                            total_geral[col] = fmt_real(total_geral[col])
+
+                        df_quebra = pd.concat(
+                            [df_quebra, pd.DataFrame([total_geral])], ignore_index=True
+                        )
+
+                        df_quebra = df_quebra.drop(
+                            columns=[c for c in df_quebra.columns if c.endswith("_num")]
+                        )
+
+                        df_quebra.set_index("Filial", inplace=True)
+
+                        st.dataframe(df_quebra, width="stretch")
+
+                    else:
+                        st.info("Nenhum dado de quebra encontrado.")
+
+            else:
+                st.info("Arquivo de quebra/informações FGTS não encontrado.")
+                df_quebra = pd.DataFrame()
+
+            # ===============================
+            # 🔹 DOWNLOADS
+            # ===============================
+            output = io.BytesIO()
+
+            # Preparar dataframes
+            df_download_totais = df_totais.reset_index().copy()
+            df_download_extra = df_extra_fmt.reset_index().copy()
+            df_download_extra = df_download_extra.sort_values(
+                by="Filial", key=lambda col: col.map(sort_buffon)
+            )
+            df_download_extra_caixa = df_quebra.reset_index().copy()
+
+            col_filial_original = df_download_totais["Filial"].copy()
+
+            pos = len(df_download_totais.columns) - 2
+
+            df_download_totais.insert(pos, "Filial ", col_filial_original)
+
+            # Função para quebrar header
+            def separar_header_em_duas_linhas(header_list):
+                codigos = []
+                descricoes = []
+                for col in header_list:
+                    if " - " not in col:  # Filial, Funcionários, Resultado, etc
+                        codigos.append("")
+                        descricoes.append(col)
+                    else:
+                        codigo, nome = col.split(" - ", 1)
+                        codigos.append(codigo.strip())
+                        descricoes.append(nome.strip())
+                return codigos, descricoes
+
+            # Obter header original do df_totais
+            header_original = df_download_totais.columns.tolist()
+            header_codigos, header_nomes = separar_header_em_duas_linhas(
+                header_original
+            )
+
+            with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                workbook = writer.book
+
+                # Escreve o DF começando na linha 3 (0=linha4 na planilha)
+                df_download_totais.to_excel(
+                    writer, index=False, sheet_name="Resumo Salários", startrow=4
+                )
+
+                if "Func." in df_totais.columns:
+                    df_download_salario = df_totais[
+                        ["Func.", "D-266.6 - T. salário"]
+                    ].reset_index()
+
+                    df_download_salario.to_excel(
                         writer,
                         index=False,
-                        sheet_name="Resumo Salários",
-                        startrow=last_row_totais + 4,
-                        startcol=2,
+                        sheet_name="Resumo Salários e Funcionários",
                     )
 
-                    mes_csv = ss.get("csv_mes")
-                    ano_csv = ss.get("csv_ano")
-
-                    first_day_this_month = datetime.now().replace(day=1)
-                    last_day_prev_month = first_day_this_month - timedelta(days=1)
-                    mes_ano_excel = last_day_prev_month.strftime("%m/%Y")
-
-                    if mes_csv and ano_csv:
-                        mes_ano_excel = f"{mes_csv}/{ano_csv}"
-
-                    worksheet.merge_range(
-                        "A2:G2", f"SALÁRIOS REFERENTES MÊS {mes_ano_excel}", format_sub
-                    )
-
-                    # Bold na última linha
-                    last_fmt = workbook.add_format({"bold": True})
-                    last_row = len(df_download_totais)
-                    worksheet.set_row(last_row + 4, None, last_fmt)
-
-                # Gerar bytes
-                xlsx_data = output.getvalue()
-
-                # Nome do arquivo
-                if mes_csv and ano_csv:
-                    nome_arquivo = f"resumo_salarios_buffon_{mes_csv}-{ano_csv}.xlsx"
-                else:
-                    mes_ano = last_day_prev_month.strftime("%m-%Y")
-                    nome_arquivo = f"resumo_salarios_buffon_{mes_ano}.xlsx"
-
-                # Botão de download
-                st.download_button(
-                    label=":material/download: Baixar",
-                    data=xlsx_data,
-                    file_name=nome_arquivo,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    type="primary",
+                df_empresas = pd.DataFrame(
+                    {
+                        "Empresa": [
+                            "Petrifacill",
+                            "Petrogass",
+                            "Volares",
+                            "Solyda",
+                        ],
+                        "Func.": ["", "", "", ""],
+                        "Salário": ["", "", "", ""],
+                    }
                 )
+
+                worksheet_func = writer.sheets["Resumo Salários e Funcionários"]
+
+                # Descobrir a última linha usada pela tabela principal
+                start_row_empresas = len(df_download_salario) + 3
+
+                # Título da mini tabela
+                worksheet_func.merge_range(
+                    start_row_empresas - 1,
+                    0,
+                    start_row_empresas - 1,
+                    2,
+                    "Resumo por Empresa",
+                    workbook.add_format(
+                        {"bold": True, "font_size": 12, "align": "left"}
+                    ),
+                )
+
+                # Escrever a mini tabela
+                df_empresas.to_excel(
+                    writer,
+                    sheet_name="Resumo Salários e Funcionários",
+                    startrow=start_row_empresas,
+                    index=False,
+                )
+
+                worksheet = writer.sheets["Resumo Salários"]
+
+                # FORMATOS
+                format_title = workbook.add_format(
+                    {
+                        "bold": True,
+                        "align": "left",
+                        "valign": "vcenter",
+                        "font_size": 14,
+                    }
+                )
+                format_sub = workbook.add_format(
+                    {
+                        "bold": True,
+                        "align": "left",
+                        "valign": "vcenter",
+                        "font_size": 12,
+                    }
+                )
+                fmt_num = workbook.add_format(
+                    {"align": "center", "valign": "vcenter", "bold": True}
+                )
+                fmt_cont_cods = workbook.add_format(
+                    {"align": "left", "valign": "vcenter", "bold": True}
+                )
+
+                # ===============================
+                # 🔹 ESCREVER AS LINHAS 1 E 2 DO HEADER
+                # ===============================
+
+                # Linha 1 → somente códigos
+                for col_idx, codigo in enumerate(header_codigos):
+                    worksheet.write(3, col_idx, codigo, fmt_num)
+
+                # Linha 2 → nomes
+                for col_idx, nome in enumerate(header_nomes):
+                    worksheet.write(4, col_idx, nome, fmt_num)
+
+                HEADER_NUMBERS = {
+                    "C-270.4 - INSS": "10",
+                    "C-147.3 - IRF rec.": "11",
+                    "C-275.5 - V.T.": "12",
+                    "C-297.6 - Farm.": "13",
+                    "C-51.5 - Ad. Sal.": "90",
+                    "C-51.5 - Desc. Ad. Sal.": "91",
+                    "C-2267.5 - Conf. dívida": "150",
+                    "C-142.2 - P.Alim.": "15",
+                    "C-297.6 - Pl. Saúde": "16",
+                    "C-146.5 - Sind. Rec.": "17",
+                    "C-302.6 - Cest. Bas.": "18",
+                    "C-152.0 -  Sub. T.": "19",
+                    "C-22667 - D-CAIXA (Desc. emp. Consig.)": "152",
+                }
+
+                col_names = df_download_totais.columns.tolist()
+
+                for col_idx, col_name in enumerate(col_names):
+                    codigo = HEADER_NUMBERS.get(col_name, "")
+                    worksheet.write(2, col_idx, codigo, fmt_num)
+
+                # Aplica o título "Códigos contábeis" apenas sobre as duas primeiras colunas
+                worksheet.merge_range("A3:C3", "Códigos contábeis", fmt_cont_cods)
+                # ===============================
+                # 🔹 TITULOS DO DOCUMENTO
+                # ===============================
+                worksheet.merge_range(
+                    "A1:G1",
+                    "COMERCIAL BUFFON COMB. E TRANSPORTES LTDA",
+                    format_title,
+                )
+
+                last_row_totais = len(df_download_totais) + 6
+
+                worksheet.write(last_row_totais + 1, 0, " ")
+
+                format_section = workbook.add_format(
+                    {"bold": True, "font_size": 12, "align": "left"}
+                )
+                worksheet.merge_range(
+                    last_row_totais + 3,
+                    2,
+                    last_row_totais + 3,
+                    4,
+                    "Cálculo de Pró-Labore",
+                    format_section,
+                )
+                df_download_extra.to_excel(
+                    writer,
+                    index=False,
+                    sheet_name="Resumo Salários",
+                    startrow=last_row_totais + 4,
+                    startcol=2,
+                )
+
+                mes_csv = ss.get("csv_mes")
+                ano_csv = ss.get("csv_ano")
+
+                first_day_this_month = datetime.now().replace(day=1)
+                last_day_prev_month = first_day_this_month - timedelta(days=1)
+                mes_ano_excel = last_day_prev_month.strftime("%m/%Y")
+
+                if mes_csv and ano_csv:
+                    mes_ano_excel = f"{mes_csv}/{ano_csv}"
+
+                worksheet.merge_range(
+                    "A2:G2", f"SALÁRIOS REFERENTES MÊS {mes_ano_excel}", format_sub
+                )
+
+                # Bold na última linha
+                last_fmt = workbook.add_format({"bold": True})
+                last_row = len(df_download_totais)
+                worksheet.set_row(last_row + 4, None, last_fmt)
+
+                # ===============================
+                # 🔹 EXTRA CAIXA — MESMO HEADER DO RESUMO SALÁRIOS
+                # ===============================
+
+                worksheet_caixa = workbook.add_worksheet("Extra Caixa")
+                writer.sheets["Extra Caixa"] = worksheet_caixa
+
+                # Header base
+                header_caixa = df_download_extra_caixa.columns.tolist()
+                header_codigos_caixa, header_nomes_caixa = (
+                    separar_header_em_duas_linhas(header_caixa)
+                )
+
+                # Escrever dataframe começando na mesma linha
+                df_download_extra_caixa.to_excel(
+                    writer, index=False, sheet_name="Extra Caixa", startrow=3
+                )
+
+                # Linha 1 → códigos contábeis
+                for col_idx, codigo in enumerate(header_codigos_caixa):
+                    worksheet_caixa.write(2, col_idx, codigo, fmt_num)
+
+                # Linha 2 → descrições
+                for col_idx, nome in enumerate(header_nomes_caixa):
+                    worksheet_caixa.write(3, col_idx, nome, fmt_num)
+
+                # Linha 0 → título
+                worksheet_caixa.merge_range(
+                    "A1:G1",
+                    "COMERCIAL BUFFON COMB. E TRANSPORTES LTDA",
+                    format_title,
+                )
+
+                # Linha 1 → subtítulo (mesmo mês)
+                worksheet_caixa.merge_range(
+                    "A2:G2",
+                    f"EXTRA CAIXA REFERENTE MÊS {mes_ano_excel}",
+                    format_sub,
+                )
+
+            # Gerar bytes
+            xlsx_data = output.getvalue()
+
+            # Nome do arquivo
+            if mes_csv and ano_csv:
+                nome_arquivo = f"resumo_salarios_buffon_{mes_csv}-{ano_csv}.xlsx"
+            else:
+                mes_ano = last_day_prev_month.strftime("%m-%Y")
+                nome_arquivo = f"resumo_salarios_buffon_{mes_ano}.xlsx"
+
+            # Botão de download
+            st.download_button(
+                label=":material/download: Baixar resultado geral",
+                data=xlsx_data,
+                file_name=nome_arquivo,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+            )
 
         except Exception as e:
             st.error("Ocorreu um erro ao processar os dados extraídos.")
