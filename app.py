@@ -1373,11 +1373,13 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         st.dataframe(df_quebra, width="stretch")
 
                     else:
-                        st.info("Nenhum dado de quebra encontrado.")
+                        st.info(
+                            "Nenhum dado de quebra encontrado. Verifique o arquivo enviado"
+                        )
 
             else:
                 with tabs[1]:
-                    st.subheader("Extra Caixa")
+                    st.subheader("Cálculo FGTS")
 
                     st.info("Arquivo de quebra/informações FGTS não encontrado.")
                     df_quebra = pd.DataFrame()
