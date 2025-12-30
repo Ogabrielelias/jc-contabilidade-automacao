@@ -1724,5 +1724,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 )
 
         except Exception as e:
-            st.error("Ocorreu um erro ao processar os dados extraídos.")
+            st.error(
+                "Ocorreu um erro ao processar os dados extraídos. Verifique os arquivos enviados ou contate o suporte."
+            )
             print(f"[ERRO] - {e}")
