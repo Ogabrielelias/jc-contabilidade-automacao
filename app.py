@@ -1380,8 +1380,11 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
             else:
                 with tabs[1]:
                     st.subheader("Cálculo FGTS")
+                    st.write("")
 
-                    st.info("Arquivo de quebra/informações FGTS não encontrado.")
+                    st.info(
+                        "Informações de FGTS não encontrado. Verifique o arquivo enviado"
+                    )
                     df_quebra = pd.DataFrame()
 
             # ===============================
