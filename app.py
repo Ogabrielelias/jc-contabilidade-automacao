@@ -1428,6 +1428,8 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
             with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
                 workbook = writer.book
 
+                fmt_right = workbook.add_format({"align": "right", "valign": "vcenter"})
+
                 # Escreve o DF começando na linha 3 (0=linha4 na planilha)
                 df_download_totais.to_excel(
                     writer, index=False, sheet_name="Resumo Salários", startrow=4
@@ -1459,6 +1461,10 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 )
 
                 worksheet = writer.sheets["Resumo Salários"]
+
+                worksheet.set_column(
+                    f"B6:V{len(df_download_totais) + 7}", None, fmt_right
+                )
 
                 # FORMATOS
                 format_title = workbook.add_format(
@@ -1515,6 +1521,10 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         sheet_name="Resumo Salários e Funcionários",
                         startrow=start_row_empresas,
                         index=False,
+                    )
+
+                    worksheet_func.set_column(
+                        f"B4:C{len(df_download_extra) + 4}", None, fmt_right
                     )
 
                     worksheet_func.merge_range(
@@ -1609,7 +1619,9 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 )
 
                 # Bold na última linha
-                last_fmt = workbook.add_format({"bold": True})
+                last_fmt = workbook.add_format(
+                    {"bold": True, "align": "right", "valign": "vcenter"}
+                )
                 last_row = len(df_download_totais)
                 worksheet.set_row(last_row + 4, None, last_fmt)
 
@@ -1640,6 +1652,10 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                     # Linha 2 → descrições
                     for col_idx, nome in enumerate(header_nomes_caixa):
                         worksheet_caixa.write(3, col_idx, nome, fmt_num)
+
+                    worksheet_caixa.set_column(
+                        f"B6:F{len(df_download_extra_caixa) + 3}", None, fmt_right
+                    )
 
                     # Linha 0 → título
                     worksheet_caixa.merge_range(
