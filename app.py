@@ -1276,8 +1276,6 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
             if "resultados_quebra" in locals():
                 df_quebra = pd.DataFrame(resultados_quebra)
 
-                st.write(df_quebra)
-
                 with tabs[1]:
                     st.subheader("Extra Caixa")
 
@@ -1374,8 +1372,11 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         st.info("Nenhum dado de quebra encontrado.")
 
             else:
-                st.info("Arquivo de quebra/informações FGTS não encontrado.")
-                df_quebra = pd.DataFrame()
+                with tabs[1]:
+                    st.subheader("Extra Caixa")
+
+                    st.info("Arquivo de quebra/informações FGTS não encontrado.")
+                    df_quebra = pd.DataFrame()
 
             # ===============================
             # 🔹 DOWNLOADS
