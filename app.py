@@ -308,11 +308,8 @@ with st.container(border=True):
             if mq_pdf and anoq_pdf:
                 pdf_qmes = mq_pdf.group(1).zfill(2)
                 pdf_qano = anoq_pdf.group(0)
-        if (
-            csv_ano != pdf_ano
-            or csv_mes != pdf_mes
-            or csv_ano != pdf_qano
-            or csv_mes != pdf_qmes
+        if ((csv_ano != pdf_ano or csv_mes != pdf_mes) and pdf_file) or (
+            (csv_ano != pdf_qano or csv_mes != pdf_qmes) and pdf_quebra_file
         ):
             st.warning(
                 f":orange[Os arquivos enviados parecem ser de meses diferentes, confira suas datas: Planilha Excel ({csv_mes}/{csv_ano}) {f'x PDF Salários ({pdf_mes}/{pdf_ano}) 'if pdf_mes and pdf_ano else ''}{f'x PDF FGTS ({pdf_qmes}/{pdf_qano})'if pdf_qmes and pdf_qano else ''}]"
@@ -473,7 +470,7 @@ if uploaded_file is not None and "df_final" in locals():
             tabs = st.tabs(
                 [
                     "Resumo Salários",
-                    "Cálculo FGTS",
+                    "Resumo FGTS",
                     "Resumo prolabore",
                     "Dados Extraídos",
                 ]
@@ -1275,7 +1272,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 df_quebra = pd.DataFrame(resultados_quebra)
 
                 with tabs[1]:
-                    st.subheader("Cálculo FGTS")
+                    st.subheader("Resumo FGTS")
 
                     st.write("")
 
@@ -1379,7 +1376,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
 
             else:
                 with tabs[1]:
-                    st.subheader("Cálculo FGTS")
+                    st.subheader("Resumo FGTS")
                     st.write("")
 
                     st.info(
