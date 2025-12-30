@@ -1458,31 +1458,6 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                     }
                 )
 
-                worksheet_func = writer.sheets["Resumo Salários e Funcionários"]
-
-                # Descobrir a última linha usada pela tabela principal
-                start_row_empresas = len(df_download_salario) + 5
-
-                # Título da mini tabela
-                worksheet_func.merge_range(
-                    start_row_empresas - 1,
-                    0,
-                    start_row_empresas - 1,
-                    2,
-                    "Resumo por Empresa",
-                    workbook.add_format(
-                        {"bold": True, "font_size": 12, "align": "left"}
-                    ),
-                )
-
-                # Escrever a mini tabela
-                df_empresas.to_excel(
-                    writer,
-                    sheet_name="Resumo Salários e Funcionários",
-                    startrow=start_row_empresas,
-                    index=False,
-                )
-
                 worksheet = writer.sheets["Resumo Salários"]
 
                 # FORMATOS
@@ -1513,20 +1488,46 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                     mes_ano_excel = f"{mes_csv}/{ano_csv}"
 
                 # ===============================
-                # 🔹 HEADER – RESUMO SALÁRIOS E FUNCIONÁRIOS
+                # 🔹 RESUMO SALÁRIOS E FUNCIONÁRIOS
                 # ===============================
 
-                worksheet_func.merge_range(
-                    "A1:G1",
-                    "COMERCIAL BUFFON COMB. E TRANSPORTES LTDA",
-                    format_title,
-                )
+                if "Func." in df_totais.columns:
+                    worksheet_func = writer.sheets["Resumo Salários e Funcionários"]
 
-                worksheet_func.merge_range(
-                    "A2:E2",
-                    f"SALÁRIOS REFERENTES MÊS {mes_ano_excel}",
-                    format_sub,
-                )
+                    # Descobrir a última linha usada pela tabela principal
+                    start_row_empresas = len(df_download_salario) + 5
+
+                    # Título da mini tabela
+                    worksheet_func.merge_range(
+                        start_row_empresas - 1,
+                        0,
+                        start_row_empresas - 1,
+                        2,
+                        "Resumo por Empresa",
+                        workbook.add_format(
+                            {"bold": True, "font_size": 12, "align": "left"}
+                        ),
+                    )
+
+                    # Escrever a mini tabela
+                    df_empresas.to_excel(
+                        writer,
+                        sheet_name="Resumo Salários e Funcionários",
+                        startrow=start_row_empresas,
+                        index=False,
+                    )
+
+                    worksheet_func.merge_range(
+                        "A1:G1",
+                        "COMERCIAL BUFFON COMB. E TRANSPORTES LTDA",
+                        format_title,
+                    )
+
+                    worksheet_func.merge_range(
+                        "A2:E2",
+                        f"SALÁRIOS REFERENTES MÊS {mes_ano_excel}",
+                        format_sub,
+                    )
 
                 fmt_num = workbook.add_format(
                     {"align": "center", "valign": "vcenter", "bold": True}
@@ -1616,41 +1617,43 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 # 🔹 EXTRA CAIXA — MESMO HEADER DO RESUMO SALÁRIOS
                 # ===============================
 
-                worksheet_caixa = workbook.add_worksheet("FGTS e Honorarios")
-                writer.sheets["FGTS e Honorarios"] = worksheet_caixa
+                if df_download_extra_caixa.empty is False:
 
-                # Header base
-                header_caixa = df_download_extra_caixa.columns.tolist()
-                header_codigos_caixa, header_nomes_caixa = (
-                    separar_header_em_duas_linhas(header_caixa)
-                )
+                    worksheet_caixa = workbook.add_worksheet("FGTS e Honorarios")
+                    writer.sheets["FGTS e Honorarios"] = worksheet_caixa
 
-                # Escrever dataframe começando na mesma linha
-                df_download_extra_caixa.to_excel(
-                    writer, index=False, sheet_name="FGTS e Honorarios", startrow=3
-                )
+                    # Header base
+                    header_caixa = df_download_extra_caixa.columns.tolist()
+                    header_codigos_caixa, header_nomes_caixa = (
+                        separar_header_em_duas_linhas(header_caixa)
+                    )
 
-                # Linha 1 → códigos contábeis
-                for col_idx, codigo in enumerate(header_codigos_caixa):
-                    worksheet_caixa.write(2, col_idx, codigo, fmt_num)
+                    # Escrever dataframe começando na mesma linha
+                    df_download_extra_caixa.to_excel(
+                        writer, index=False, sheet_name="FGTS e Honorarios", startrow=3
+                    )
 
-                # Linha 2 → descrições
-                for col_idx, nome in enumerate(header_nomes_caixa):
-                    worksheet_caixa.write(3, col_idx, nome, fmt_num)
+                    # Linha 1 → códigos contábeis
+                    for col_idx, codigo in enumerate(header_codigos_caixa):
+                        worksheet_caixa.write(2, col_idx, codigo, fmt_num)
 
-                # Linha 0 → título
-                worksheet_caixa.merge_range(
-                    "A1:G1",
-                    "COMERCIAL BUFFON COMB. E TRANSPORTES LTDA",
-                    format_title,
-                )
+                    # Linha 2 → descrições
+                    for col_idx, nome in enumerate(header_nomes_caixa):
+                        worksheet_caixa.write(3, col_idx, nome, fmt_num)
 
-                # Linha 1 → subtítulo (mesmo mês)
-                worksheet_caixa.merge_range(
-                    "A2:G2",
-                    f"FGTS REFERENTE MÊS {mes_ano_excel}",
-                    format_sub,
-                )
+                    # Linha 0 → título
+                    worksheet_caixa.merge_range(
+                        "A1:G1",
+                        "COMERCIAL BUFFON COMB. E TRANSPORTES LTDA",
+                        format_title,
+                    )
+
+                    # Linha 1 → subtítulo (mesmo mês)
+                    worksheet_caixa.merge_range(
+                        "A2:G2",
+                        f"FGTS REFERENTE MÊS {mes_ano_excel}",
+                        format_sub,
+                    )
 
             # Gerar bytes
             xlsx_data = output.getvalue()
