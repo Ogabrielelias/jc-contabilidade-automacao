@@ -1619,8 +1619,8 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
 
                 if df_download_extra_caixa.empty is False:
 
-                    worksheet_caixa = workbook.add_worksheet("FGTS e Honorarios")
-                    writer.sheets["FGTS e Honorarios"] = worksheet_caixa
+                    worksheet_caixa = workbook.add_worksheet("FGTS e Honorários")
+                    writer.sheets["FGTS e Honorários"] = worksheet_caixa
 
                     # Header base
                     header_caixa = df_download_extra_caixa.columns.tolist()
@@ -1630,7 +1630,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
 
                     # Escrever dataframe começando na mesma linha
                     df_download_extra_caixa.to_excel(
-                        writer, index=False, sheet_name="FGTS e Honorarios", startrow=3
+                        writer, index=False, sheet_name="FGTS e Honorários", startrow=3
                     )
 
                     # Linha 1 → códigos contábeis
@@ -1653,6 +1653,39 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         "A2:G2",
                         f"FGTS REFERENTE MÊS {mes_ano_excel}",
                         format_sub,
+                    )
+
+                    df_honorarios = pd.DataFrame(
+                        {
+                            "Descrição": [
+                                "D-288.7 - Honorários",
+                                "C-154.6 - Hon. a pagar",
+                                f"Vl. Hon. no mês {mes_ano_excel}",
+                            ],
+                            "Valor": ["", "", ""],
+                        }
+                    )
+
+                    start_row_honorarios = len(df_download_extra_caixa) + 6
+
+                    worksheet_caixa.merge_range(
+                        start_row_honorarios - 1,
+                        3,
+                        start_row_honorarios - 1,
+                        5,
+                        "Honorários",
+                        workbook.add_format(
+                            {"bold": True, "font_size": 12, "align": "left"}
+                        ),
+                    )
+
+                    # Escrever a mini tabela
+                    df_honorarios.to_excel(
+                        writer,
+                        sheet_name="FGTS e Honorários",
+                        startrow=start_row_honorarios,
+                        startcol=3,
+                        index=False,
                     )
 
             # Gerar bytes
