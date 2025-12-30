@@ -268,62 +268,55 @@ with st.container(border=True):
 
         df_pdf = pd.DataFrame(resultados)
 
-        if uploaded_file and pdf_file and pdf_quebra_file:
-            # Extrair ano e mês do CSV (padrão 202XMM)
-            csv_name = uploaded_file.name
-            m_csv = re.search(r"202\d(\d{2})", csv_name)
-            ano_csv = re.search(r"20\d{2}", csv_name)
+    if (uploaded_file and pdf_file) or (uploaded_file and pdf_quebra_file):
+        # Extrair ano e mês do CSV (padrão 202XMM)
+        csv_name = uploaded_file.name
+        m_csv = re.search(r"202\d(\d{2})", csv_name)
+        ano_csv = re.search(r"20\d{2}", csv_name)
 
-            csv_mes = None
-            csv_ano = None
+        csv_mes = None
+        csv_ano = None
 
-            if m_csv and ano_csv:
-                csv_ano = ano_csv.group(0)
-                csv_mes = m_csv.group(1)
+        if m_csv and ano_csv:
+            csv_ano = ano_csv.group(0)
+            csv_mes = m_csv.group(1)
 
-            ss["csv_mes"] = csv_mes
-            ss["csv_ano"] = csv_ano
+        ss["csv_mes"] = csv_mes
+        ss["csv_ano"] = csv_ano
 
+        pdf_mes = None
+        pdf_ano = None
+
+        if pdf_file:
             # Extrair ano e mês do PDF (padrão MM 202X)
             pdf_name = pdf_file.name
             m_pdf = re.search(r"(\d{1,2})\s+20\d{2}", pdf_name)
             ano_pdf = re.search(r"202\d", pdf_name)
 
-            pdf_mes = None
-            pdf_ano = None
-
             if m_pdf and ano_pdf:
                 pdf_mes = m_pdf.group(1).zfill(2)
                 pdf_ano = ano_pdf.group(0)
 
+        pdf_qmes = None
+        pdf_qano = None
+
+        if pdf_quebra_file:
             pdf_q_name = pdf_quebra_file.name
             mq_pdf = re.search(r"(\d{1,2})\s+20\d{2}", pdf_q_name)
             anoq_pdf = re.search(r"202\d", pdf_q_name)
 
-            pdf_qmes = None
-            pdf_qano = None
-
             if mq_pdf and anoq_pdf:
                 pdf_qmes = mq_pdf.group(1).zfill(2)
                 pdf_qano = anoq_pdf.group(0)
-
-            if (
-                not (
-                    csv_ano == pdf_ano
-                    and csv_mes == pdf_mes
-                    and csv_ano == pdf_qano
-                    and csv_mes == pdf_qmes
-                )
-                and pdf_mes
-                and pdf_ano
-                and csv_ano
-                and csv_mes
-                and pdf_qmes
-                and pdf_qano
-            ):
-                st.warning(
-                    f":orange[Os arquivos enviados parecem ser de meses diferentes, confira suas datas: Planilha Excel ({csv_mes}/{csv_ano}) x PDF Salários ({pdf_mes}/{pdf_ano}) x PDF FGTS ({pdf_qmes}/{pdf_qano})]"
-                )
+        if (
+            csv_ano != pdf_ano
+            or csv_mes != pdf_mes
+            or csv_ano != pdf_qano
+            or csv_mes != pdf_qmes
+        ):
+            st.warning(
+                f":orange[Os arquivos enviados parecem ser de meses diferentes, confira suas datas: Planilha Excel ({csv_mes}/{csv_ano}) {f'x PDF Salários ({pdf_mes}/{pdf_ano}) 'if pdf_mes and pdf_ano else ''}{f'x PDF FGTS ({pdf_qmes}/{pdf_qano})'if pdf_qmes and pdf_qano else ''}]"
+            )
 
     if uploaded_file is not None:
         try:
@@ -470,7 +463,10 @@ with st.container(border=True):
 
 if uploaded_file is not None and "df_final" in locals():
     with st.container(border=True):
-        st.header("Resultados da extração")
+        res_cols = st.columns([0.8, 0.2], vertical_alignment="bottom")
+
+        with res_cols[0]:
+            st.header("Resultados da extração")
 
         try:
 
@@ -1714,14 +1710,16 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 mes_ano = last_day_prev_month.strftime("%m-%Y")
                 nome_arquivo = f"resumo_salarios_buffon_{mes_ano}.xlsx"
 
-            # Botão de download
-            st.download_button(
-                label=":material/download: Baixar resultado geral",
-                data=xlsx_data,
-                file_name=nome_arquivo,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary",
-            )
+            with res_cols[1]:
+                # Botão de download
+                st.download_button(
+                    label=":material/download: Baixar resultado geral",
+                    data=xlsx_data,
+                    file_name=nome_arquivo,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
+                    use_container_width=True,
+                )
 
         except Exception as e:
             st.error("Ocorreu um erro ao processar os dados extraídos.")
