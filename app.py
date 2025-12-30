@@ -189,7 +189,7 @@ with st.container(border=True):
 
     st.markdown("<hr style='padding:0;margin:16px 0;'>", unsafe_allow_html=True)
 
-    upload_cols = st.columns(2)
+    upload_cols = st.columns(3)
 
     with upload_cols[0]:
         st.write(
@@ -205,7 +205,7 @@ with st.container(border=True):
             "Selecione o arquivo PDF", type=["pdf"], key="pdf_funcionarios"
         )
 
-    with upload_cols[0]:
+    with upload_cols[2]:
         st.write(
             "Envie aqui o arquivo **PDF** extrair as informações do FGTS de cada filial."
         )
@@ -320,7 +320,7 @@ with st.container(border=True):
                 and pdf_qano
             ):
                 st.warning(
-                    f":orange[Os arquivos enviados parecem ser de meses diferentes, confira suas datas: Planilha Excel ({csv_mes}/{csv_ano}) x PDF Salários ({pdf_mes}/{pdf_ano}) x PDF Quebra ({pdf_qmes}/{pdf_qano})]"
+                    f":orange[Os arquivos enviados parecem ser de meses diferentes, confira suas datas: Planilha Excel ({csv_mes}/{csv_ano}) x PDF Salários ({pdf_mes}/{pdf_ano}) x PDF FGTS ({pdf_qmes}/{pdf_qano})]"
                 )
 
     if uploaded_file is not None:
@@ -475,7 +475,7 @@ if uploaded_file is not None and "df_final" in locals():
             tabs = st.tabs(
                 [
                     "Resumo Salários",
-                    "Extra caixa",
+                    "Cálculo FGTS",
                     "Resumo prolabore",
                     "Dados Extraídos",
                 ]
@@ -1277,7 +1277,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 df_quebra = pd.DataFrame(resultados_quebra)
 
                 with tabs[1]:
-                    st.subheader("Extra Caixa")
+                    st.subheader("Cálculo FGTS")
 
                     st.write("")
 
