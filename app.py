@@ -1374,7 +1374,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
 
                     else:
                         st.info(
-                            "Nenhum dado de quebra encontrado. Verifique o arquivo enviado"
+                            "Nenhuma informação de FGTS encontrado. Verifique o arquivo enviado"
                         )
 
             else:
