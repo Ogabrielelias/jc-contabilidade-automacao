@@ -1286,7 +1286,8 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         df_quebra["Filial"] = df_quebra["Filial"].apply(mapear_filial)
 
                         df_quebra.rename(
-                            columns={"Salário": "D-271.2, C-145.7 - FGTS"}, inplace=True
+                            columns={"Salário": "D-271.2 FGTS - C-145.7 FGTS a rec"},
+                            inplace=True,
                         )
 
                         # 🔹 Coluna D-266.6 - T. salário
@@ -1305,28 +1306,29 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                             .astype(float)
                         )
 
-                        df_quebra["D-269.1, C-162.7 - 13° sal"] = (
+                        df_quebra["D-269.1 13° sal - C-162.7 Prov 13° sal"] = (
                             df_quebra["D-266.6 - T. salário_num"] / 12
                         )
 
-                        df_quebra["D-269.1, C-162.7 - 13° sal"] = df_quebra[
-                            "D-269.1, C-162.7 - 13° sal"
+                        df_quebra["D-269.1 13° sal - C-162.7 Prov 13° sal"] = df_quebra[
+                            "D-269.1 13° sal - C-162.7 Prov 13° sal"
                         ].apply(fmt_real)
 
-                        df_quebra["D-269.1, C-162.7 - 13° sal_num"] = (
-                            df_quebra["D-269.1, C-162.7 - 13° sal"]
+                        df_quebra["D-269.1 13° sal - C-162.7 Prov 13° sal_num"] = (
+                            df_quebra["D-269.1 13° sal - C-162.7 Prov 13° sal"]
                             .str.replace("R$", "", regex=False)
                             .str.replace(".", "", regex=False)
                             .str.replace(",", ".", regex=False)
                             .astype(float)
                         )
 
-                        df_quebra["D-1324.2, C-162.7 - 13° sal. 25,8%"] = (
-                            df_quebra["D-269.1, C-162.7 - 13° sal_num"] * 0.258
+                        df_quebra["D-1324.2 enc s/ 13° sal - C-162.7 13° sal"] = (
+                            df_quebra["D-269.1 13° sal - C-162.7 Prov 13° sal_num"]
+                            * 0.258
                         ).apply(fmt_real)
 
-                        df_quebra["D-1324.2, C-162.7 - 13° sal. 25,8%_num"] = (
-                            df_quebra["D-1324.2, C-162.7 - 13° sal. 25,8%"]
+                        df_quebra["D-1324.2 enc s/ 13° sal - C-162.7 13° sal_num"] = (
+                            df_quebra["D-1324.2 enc s/ 13° sal - C-162.7 13° sal"]
                             .str.replace("R$", "", regex=False)
                             .str.replace(".", "", regex=False)
                             .str.replace(",", ".", regex=False)
@@ -1334,8 +1336,8 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         )
 
                         df_quebra["Total prov 13°"] = (
-                            df_quebra["D-269.1, C-162.7 - 13° sal_num"]
-                            + df_quebra["D-1324.2, C-162.7 - 13° sal. 25,8%_num"]
+                            df_quebra["D-269.1 13° sal - C-162.7 Prov 13° sal_num"]
+                            + df_quebra["D-1324.2 enc s/ 13° sal - C-162.7 13° sal_num"]
                         ).apply(fmt_real)
 
                         # Ordenar filiais no mesmo padrão
@@ -1358,6 +1360,10 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
 
                         df_quebra = pd.concat(
                             [df_quebra, pd.DataFrame([total_geral])], ignore_index=True
+                        )
+
+                        df_quebra = df_quebra.rename(
+                            columns={"D-266.6 - T. salário": "Salário"}
                         )
 
                         df_quebra = df_quebra.drop(
@@ -1434,6 +1440,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         writer,
                         index=False,
                         sheet_name="Resumo Salários e Funcionários",
+                        startrow=2,
                     )
 
                 df_empresas = pd.DataFrame(
@@ -1452,7 +1459,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 worksheet_func = writer.sheets["Resumo Salários e Funcionários"]
 
                 # Descobrir a última linha usada pela tabela principal
-                start_row_empresas = len(df_download_salario) + 3
+                start_row_empresas = len(df_download_salario) + 5
 
                 # Título da mini tabela
                 worksheet_func.merge_range(
@@ -1493,6 +1500,32 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         "font_size": 12,
                     }
                 )
+                mes_csv = ss.get("csv_mes")
+                ano_csv = ss.get("csv_ano")
+
+                first_day_this_month = datetime.now().replace(day=1)
+                last_day_prev_month = first_day_this_month - timedelta(days=1)
+                mes_ano_excel = last_day_prev_month.strftime("%m/%Y")
+
+                if mes_csv and ano_csv:
+                    mes_ano_excel = f"{mes_csv}/{ano_csv}"
+
+                # ===============================
+                # 🔹 HEADER – RESUMO SALÁRIOS E FUNCIONÁRIOS
+                # ===============================
+
+                worksheet_func.merge_range(
+                    "A1:G1",
+                    "COMERCIAL BUFFON COMB. E TRANSPORTES LTDA",
+                    format_title,
+                )
+
+                worksheet_func.merge_range(
+                    "A2:E2",
+                    f"SALÁRIOS REFERENTES MÊS {mes_ano_excel}",
+                    format_sub,
+                )
+
                 fmt_num = workbook.add_format(
                     {"align": "center", "valign": "vcenter", "bold": True}
                 )
@@ -1568,16 +1601,6 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                     startcol=2,
                 )
 
-                mes_csv = ss.get("csv_mes")
-                ano_csv = ss.get("csv_ano")
-
-                first_day_this_month = datetime.now().replace(day=1)
-                last_day_prev_month = first_day_this_month - timedelta(days=1)
-                mes_ano_excel = last_day_prev_month.strftime("%m/%Y")
-
-                if mes_csv and ano_csv:
-                    mes_ano_excel = f"{mes_csv}/{ano_csv}"
-
                 worksheet.merge_range(
                     "A2:G2", f"SALÁRIOS REFERENTES MÊS {mes_ano_excel}", format_sub
                 )
@@ -1591,8 +1614,8 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 # 🔹 EXTRA CAIXA — MESMO HEADER DO RESUMO SALÁRIOS
                 # ===============================
 
-                worksheet_caixa = workbook.add_worksheet("Extra Caixa")
-                writer.sheets["Extra Caixa"] = worksheet_caixa
+                worksheet_caixa = workbook.add_worksheet("FGTS e Honorarios")
+                writer.sheets["FGTS e Honorarios"] = worksheet_caixa
 
                 # Header base
                 header_caixa = df_download_extra_caixa.columns.tolist()
@@ -1602,7 +1625,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
 
                 # Escrever dataframe começando na mesma linha
                 df_download_extra_caixa.to_excel(
-                    writer, index=False, sheet_name="Extra Caixa", startrow=3
+                    writer, index=False, sheet_name="FGTS e Honorarios", startrow=3
                 )
 
                 # Linha 1 → códigos contábeis
@@ -1623,7 +1646,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 # Linha 1 → subtítulo (mesmo mês)
                 worksheet_caixa.merge_range(
                     "A2:G2",
-                    f"EXTRA CAIXA REFERENTE MÊS {mes_ano_excel}",
+                    f"FGTS REFERENTE MÊS {mes_ano_excel}",
                     format_sub,
                 )
 
