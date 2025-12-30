@@ -189,7 +189,9 @@ with st.container(border=True):
 
     st.markdown("<hr style='padding:0;margin:16px 0;'>", unsafe_allow_html=True)
 
-    upload_cols = st.columns(3)
+    upload_cols = st.columns(2)
+    st.markdown("<hr style='padding:0;margin:16px 0;'>", unsafe_allow_html=True)
+    upload_cols_2 = st.columns(2)
 
     with upload_cols[0]:
         st.write(
@@ -205,7 +207,7 @@ with st.container(border=True):
             "Selecione o arquivo PDF", type=["pdf"], key="pdf_funcionarios"
         )
 
-    with upload_cols[2]:
+    with upload_cols_2[0]:
         st.write(
             "Envie aqui o arquivo **PDF** extrair as informações do FGTS de cada filial."
         )
