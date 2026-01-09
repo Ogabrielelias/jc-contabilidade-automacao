@@ -878,6 +878,8 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         ]
 
                         col_toggle = not col_toggle
+
+                    COLUNAS_ESPECIAIS = codigos_escolhidos
                     
                     ORDEM_COLUNAS_ESPECIAIS = [
                         "C-270.4 - INSS",
