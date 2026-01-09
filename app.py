@@ -878,9 +878,31 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         ]
 
                         col_toggle = not col_toggle
+                    
+                    ORDEM_COLUNAS_ESPECIAIS = [
+                        "C-270.4 - INSS",
+                        "C-147.3 - IRF rec.",
+                        "C-275.5 - V.T.",
+                        "C-297.6 - Farm.",
+                        "C-51.5 - Ad. Sal.",
+                        "C-51.5 - Desc. Ad. Sal.", 
+                        "C-2267.5 - Conf. dívida",
+                        "C-142.2 - P.Alim.",
+                        "C-297.6 - Pl. Saúde",
+                        "C-146.5 - Sind. Rec.",
+                        "C-302.6 - Cest. Bas.",
+                        "D-54.0 - Sal. Fam.",
+                        "D-53.1 - Sal. Mat.",
+                        "D-52.3 - Ad 13° Sal.",
+                        "C-22667 - D-CAIXA (Desc. emp. Consig.)",
+                    ]
 
-                    # Atualiza COLUNAS_ESPECIAIS com os valores selecionados
-                    COLUNAS_ESPECIAIS = codigos_escolhidos
+                    # Reordenar mantendo apenas colunas existentes
+                    COLUNAS_ESPECIAIS = {
+                        col: COLUNAS_ESPECIAIS[col]
+                        for col in ORDEM_COLUNAS_ESPECIAIS
+                        if col in COLUNAS_ESPECIAIS
+                    }
 
                     salvar_config("COLUNAS_ESPECIAIS", COLUNAS_ESPECIAIS)
 
