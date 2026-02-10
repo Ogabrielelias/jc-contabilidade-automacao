@@ -53,12 +53,12 @@ def carregar_config(chave, default=None):
             return resp.data[0]["valor"]
     except httpx.HTTPError as e:
         st.toast(
-            f"Erro ao carregar os códigos contábeis do banco de dados, será usado códigos padrões. Se o erro persistir contate o suporte."
+            f"Erro ao carregar os códigos contábeis, será usado códigos padrões. Se o erro persistir contate o suporte."
         )
         print(e)
     except Exception as e:
         st.toast(
-            f"Erro inesperado ao carregar os códigos contábeis do banco de dados. Se o erro persistir contate o suporte."
+            f"Erro inesperado ao carregar os códigos contábeis. Se o erro persistir contate o suporte."
         )
         print(e)
     return default
@@ -713,7 +713,9 @@ if uploaded_file is not None and "df_final" in locals():
                     for cod in lista:
                         if cod not in mapa_codigos:
                             # códigos que vêm apenas do default
-                            opcoes_formatadas.append(f"{cod} - (sem descrição)")
+                            opcoes_formatadas.append(
+                                f"{cod} - (Não encontrado na planilha)"
+                            )
 
                 # Remover duplicados mantendo ordem
                 opcoes_formatadas = list(dict.fromkeys(opcoes_formatadas))
@@ -855,8 +857,9 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         defaults_formatados = []
                         for cod in lista_default_codigos:
                             desc = mapa_codigos.get(str(cod), None)
-                            if desc is not None:
-                                defaults_formatados.append(f"{cod} - {desc}")
+                            defaults_formatados.append(
+                                f"{cod} - {desc if desc else '(Não encontrado na planilha)'}"
+                            )
 
                         # Selecionar coluna visual
                         if col_toggle:
@@ -879,15 +882,30 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
 
                         col_toggle = not col_toggle
 
-                    COLUNAS_ESPECIAIS = codigos_escolhidos
-                    
+                        COLUNAS_ESPECIAIS[coluna] = sorted(
+                            list(
+                                set(
+                                    [
+                                        *codigos_escolhidos[coluna],
+                                        *[
+                                            cod
+                                            for cod in lista_default_codigos
+                                            if cod
+                                            not in df_final["codigo"].astype(str).values
+                                        ],
+                                    ]
+                                )
+                            ),
+                            key=int,
+                        )
+
                     ORDEM_COLUNAS_ESPECIAIS = [
                         "C-270.4 - INSS",
                         "C-147.3 - IRF rec.",
                         "C-275.5 - V.T.",
                         "C-297.6 - Farm.",
                         "C-51.5 - Ad. Sal.",
-                        "C-51.5 - Desc. Ad. Sal.", 
+                        "C-51.5 - Desc. Ad. Sal.",
                         "C-2267.5 - Conf. dívida",
                         "C-142.2 - P.Alim.",
                         "C-297.6 - Pl. Saúde",
