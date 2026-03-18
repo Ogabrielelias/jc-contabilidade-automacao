@@ -121,6 +121,253 @@ def detectar_filial(texto):
     return f"Filial {int(numero) - 1}" if tipo == "Filial" else "Matriz"
 
 
+def detectar_provento_filial(texto):
+    regex_filial_provento = re.compile(r"Total\s+Filial:\s*(\d+)", re.IGNORECASE)
+    match = regex_filial_provento.search(texto)
+
+    if not match:
+        return None
+
+    numero = int(match.group(1))
+
+    if numero == 1:
+        return "Matriz"
+    else:
+        return f"Filial {numero-1:02d}"
+
+
+def corrigir_subtotais(df):
+
+    contador = 0
+
+    for i, desc in enumerate(df["Descrição"]):
+
+        if desc == "Sem desc":
+
+            contador += 1
+
+            if contador == 1:
+                df.loc[i, "Descrição"] = "Subtotal Provisão"
+
+            elif contador == 2:
+                df.loc[i, "Descrição"] = "Subtotal Encargos"
+
+            elif contador == 3:
+                df.loc[i, "Descrição"] = "Subtotal FGTS"
+
+    return df
+
+
+def consolidar_provisoes(tabelas_filiais):
+    dados = []
+
+    for filial, df in tabelas_filiais.items():
+
+        for col in df.columns[1:]:
+            df[col] = df[col].apply(limpar_e_converter)
+
+        df = corrigir_subtotais(df)
+
+        linha_total_prov = df[df["Descrição"] == "Total Provisão"]
+        valor_total_prov = (
+            linha_total_prov["Total"].values[0] if not linha_total_prov.empty else 0
+        )
+
+        # Subtotal Provisão
+        linha_prov = df[df["Descrição"] == "Subtotal Provisão"]
+
+        valor_prov = linha_prov["Total Mês"].values[0] if not linha_prov.empty else 0
+        valor_pagas = linha_prov["Total Pagas"].values[0] if not linha_prov.empty else 0
+        valor_transferencias = (
+            linha_prov["Transferências"].values[0] if not linha_prov.empty else 0
+        )
+        valor_ajuste_prov = (
+            linha_prov["Ajuste"].values[0] if not linha_prov.empty else 0
+        )
+
+        valor_prov = valor_prov + valor_ajuste_prov + valor_transferencias
+
+        # Subtotal FGTS
+        linha_fgts = df[df["Descrição"] == "Subtotal FGTS"]
+
+        valor_fgts = linha_fgts["Total Mês"].values[0] if not linha_fgts.empty else 0
+        valor_fgts_pagas = (
+            linha_fgts["Total Pagas"].values[0] if not linha_fgts.empty else 0
+        )
+        valor_transferencias_fgts = (
+            linha_fgts["Transferências"].values[0] if not linha_fgts.empty else 0
+        )
+        valor_ajuste_fgts = (
+            linha_fgts["Ajuste"].values[0] if not linha_fgts.empty else 0
+        )
+
+        valor_fgts = valor_fgts + valor_ajuste_fgts + valor_transferencias_fgts
+
+        linha_saldo_anterior = df[df["Descrição"] == "Total Provisão"]
+        valor_saldo_anterior = (
+            linha_saldo_anterior["Total Anterior"].values[0]
+            if not linha_saldo_anterior.empty
+            else 0
+        )
+
+        dados.append(
+            {
+                "Filial": filial,
+                "Saldo anterior": valor_saldo_anterior,
+                "D-269.1 - 13° salário": valor_prov,
+                "D-1324.2 - Enc. s/13° sal.": valor_fgts,
+                "Pagas": valor_pagas,
+                "C-1324.2 - ENC s/ 13": valor_fgts_pagas,
+                "Total prov. 13°": valor_total_prov,
+            }
+        )
+
+    df_consolidado = pd.DataFrame(dados)
+
+    df_consolidado["Total prov. 13°_sum"] = (
+        df_consolidado["Saldo anterior"]
+        + df_consolidado["D-269.1 - 13° salário"]
+        + df_consolidado["D-1324.2 - Enc. s/13° sal."]
+        - df_consolidado["Pagas"]
+        - df_consolidado["C-1324.2 - ENC s/ 13"]
+    )
+
+    df_consolidado["Total prov. 13°_dif"] = (
+        df_consolidado["Total prov. 13°_sum"] - df_consolidado["Total prov. 13°"]
+    )
+
+    mask_c_zero = df_consolidado["C-1324.2 - ENC s/ 13"] == 0
+
+    df_consolidado.loc[mask_c_zero, "D-1324.2 - Enc. s/13° sal."] -= df_consolidado.loc[
+        mask_c_zero, "Total prov. 13°_dif"
+    ]
+
+    df_consolidado.loc[~mask_c_zero, "C-1324.2 - ENC s/ 13"] += df_consolidado.loc[
+        ~mask_c_zero, "Total prov. 13°_dif"
+    ]
+
+    df_consolidado["Total prov. 13°"] = (
+        df_consolidado["Saldo anterior"]
+        + df_consolidado["D-269.1 - 13° salário"]
+        + df_consolidado["D-1324.2 - Enc. s/13° sal."]
+        - df_consolidado["Pagas"]
+        - df_consolidado["C-1324.2 - ENC s/ 13"]
+    )
+
+    df_consolidado = df_consolidado.drop(
+        ["Total prov. 13°_dif", "Total prov. 13°_sum"], axis=1
+    )
+
+    # add total row
+    linha_total = df_consolidado.select_dtypes(include="number").sum()
+    linha_total["Filial"] = "TOTAL GERAL"
+
+    df_consolidado = pd.concat(
+        [df_consolidado, pd.DataFrame([linha_total])], ignore_index=True
+    )
+
+    df_consolidado = df_consolidado.round(2)
+    cols_num = df_consolidado.select_dtypes(include="number").columns
+    df_consolidado[cols_num] = df_consolidado[cols_num].mask(
+        df_consolidado[cols_num].abs() < 0.005, 0
+    )
+
+    return df_consolidado
+
+
+def extrair_tabelas_por_filial(uploaded_file):
+    colunas = [
+        "Descrição",
+        "Total Anterior",
+        "Total Mês",
+        "Transferências",
+        "Total Pagas",
+        "Ajuste",
+        "Total",
+    ]
+
+    filiais = {}
+    filial_atual = None
+    dados_filial = []
+
+    with fitz.open(stream=uploaded_file.read(), filetype="pdf") as doc:
+
+        for page in doc:
+
+            words = page.get_text("words")
+            words.sort(key=lambda w: (w[1], w[0]))
+
+            linhas = {}
+            for w in words:
+                y = round(w[1], 0)
+                linhas.setdefault(y, []).append(w[4])
+
+            for linha in linhas.values():
+
+                texto = " ".join(linha)
+
+                # detectar filial
+                if "Total Filial:" in texto:
+
+                    # salva a filial anterior
+                    if filial_atual and dados_filial:
+                        filiais[filial_atual] = pd.DataFrame(
+                            dados_filial, columns=colunas
+                        )
+
+                    # extrai nome da filial
+                    filial_atual = (
+                        texto.split("Total Filial:")[1].strip().split(" - ")[0]
+                    )
+
+                    if filial_atual.lower() == "1":
+                        filial_atual = "Matriz"
+                    else:
+                        filial_atual = f"Filial {int(filial_atual)-1:02d}"
+
+                    dados_filial = []
+                    continue
+
+                if "Filtrado por:" in texto:
+                    continue
+
+                if "Total Anterior" in texto:
+                    continue
+
+                numeros = re.findall(r"-?\d{1,3}(?:\.\d{3})*,\d{2}", texto)
+
+                if len(numeros) < 5:
+                    continue
+
+                descricao = re.sub(r"[−-]?\d{1,3}(?:\.\d{3})*,\d{2}", "", texto)
+
+                descricao = descricao.strip()
+
+                if descricao == "":
+                    descricao = "Sem desc"
+
+                while len(numeros) < 6:
+                    numeros.insert(1, "0,00")
+
+                dados_filial.append(
+                    [
+                        descricao,
+                        numeros[0],
+                        numeros[1],
+                        numeros[2],
+                        numeros[3],
+                        numeros[4],
+                        numeros[5],
+                    ]
+                )
+
+        # salvar última filial
+        if filial_atual and dados_filial:
+            filiais[filial_atual] = pd.DataFrame(dados_filial, columns=colunas)
+
+    return filiais
+
+
 def detectar_funcionarios(texto):
     match = regex_funcionarios.search(texto)
     if not match:
@@ -155,6 +402,38 @@ def separar_header_em_duas_linhas(header_list):
             codigos.append(codigo.strip())
             descricoes.append(nome.strip())
     return codigos, descricoes
+
+
+def limpar_e_converter(valor):
+    if isinstance(valor, str):
+        negativo = False
+        if valor.startswith("(") and valor.endswith(")"):
+            negativo = True
+            valor = valor[1:-1]
+
+        valor = valor.replace(".", "").replace(",", ".")
+        numero = float(valor)
+
+        if negativo:
+            numero *= -1
+
+        return numero
+    return valor
+
+
+def format_df_prov_13(df):
+    df_formatted = df.copy()
+    for col in df_formatted.columns:
+        if col != "Filial":
+            df_formatted[col] = df_formatted[col].apply(
+                lambda x: (
+                    f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                    if pd.notnull(x)
+                    else x
+                )
+            )
+
+    return df_formatted
 
 
 st.set_page_config(page_title="JC Contabilidade - Postos Buffon", layout="wide")
@@ -215,6 +494,14 @@ with st.container(border=True):
             "Selecione o arquivo PDF", type=["pdf"], key="pdf_quebra"
         )
 
+    with upload_cols_2[1]:
+        st.write(
+            "Envie aqui o arquivo **PDF** extrair as informações de proventos 13º salário de cada filial."
+        )
+        pdf_provento_file = st.file_uploader(
+            "Selecione o arquivo PDF", type=["pdf"], key="pdf_prov"
+        )
+
     regex_filial = re.compile(r"RESUMO\s+(Filial|Matriz):\s*(\d+)", re.IGNORECASE)
     regex_funcionarios = re.compile(r"Nesta\s+Folha\s+(\d+)", re.IGNORECASE)
     regex_salario = re.compile(
@@ -268,7 +555,11 @@ with st.container(border=True):
 
         df_pdf = pd.DataFrame(resultados)
 
-    if (uploaded_file and pdf_file) or (uploaded_file and pdf_quebra_file):
+    if (
+        (uploaded_file and pdf_file)
+        or (uploaded_file and pdf_quebra_file)
+        or (uploaded_file and pdf_provento_file)
+    ):
         # Extrair ano e mês do CSV (padrão 202XMM)
         csv_name = uploaded_file.name
         m_csv = re.search(r"202\d(\d{2})", csv_name)
@@ -308,11 +599,22 @@ with st.container(border=True):
             if mq_pdf and anoq_pdf:
                 pdf_qmes = mq_pdf.group(1).zfill(2)
                 pdf_qano = anoq_pdf.group(0)
-        if ((csv_ano != pdf_ano or csv_mes != pdf_mes) and pdf_file) or (
-            (csv_ano != pdf_qano or csv_mes != pdf_qmes) and pdf_quebra_file
+
+        if pdf_provento_file:
+            pdf_p_name = pdf_provento_file.name
+            mp_pdf = re.search(r"(\d{1,2})\s+20\d{2}", pdf_p_name)
+            anop_pdf = re.search(r"202\d", pdf_p_name)
+
+            if mp_pdf and anop_pdf:
+                pdf_pmes = mp_pdf.group(1).zfill(2)
+                pdf_pano = anop_pdf.group(0)
+        if (
+            ((csv_ano != pdf_ano or csv_mes != pdf_mes) and pdf_file)
+            or ((csv_ano != pdf_qano or csv_mes != pdf_qmes) and pdf_quebra_file)
+            or ((csv_ano != pdf_pano or csv_mes != pdf_pmes) and pdf_provento_file)
         ):
             st.warning(
-                f":orange[Os arquivos enviados parecem ser de meses diferentes, confira suas datas: Planilha Excel ({csv_mes}/{csv_ano}) {f'x PDF Salários ({pdf_mes}/{pdf_ano}) 'if pdf_mes and pdf_ano else ''}{f'x PDF FGTS ({pdf_qmes}/{pdf_qano})'if pdf_qmes and pdf_qano else ''}]"
+                f":orange[Os arquivos enviados parecem ser de meses diferentes, confira suas datas: Planilha Excel ({csv_mes}/{csv_ano}) {f'x PDF Salários ({pdf_mes}/{pdf_ano}) 'if pdf_mes and pdf_ano else ''}{f'x PDF FGTS ({pdf_qmes}/{pdf_qano})'if pdf_qmes and pdf_qano else ''}{f'x PDF Proventos ({pdf_pmes}/{pdf_pano})'if pdf_pmes and pdf_pano else ''}]"
             )
 
     if uploaded_file is not None:
@@ -458,6 +760,129 @@ with st.container(border=True):
             print(f"[ERRO] {e}")
             st.stop()
 
+    if pdf_provento_file:
+        try:
+            tabelas_filiais = extrair_tabelas_por_filial(pdf_provento_file)
+            df_13_proventos = consolidar_provisoes(tabelas_filiais)
+            df_13_proventos.set_index("Filial", inplace=True)
+        except Exception as e:
+            st.error(
+                "O arquivo enviado não corresponde ao padrão esperado."
+                "Certifique-se de utilizar o PDF de provisão de 13° salário ou contate o suporte."
+            )
+            print(f"[ERRO] {e}")
+            st.stop()
+
+if not uploaded_file and pdf_provento_file:
+    with st.container(border=True):
+        res_cols = st.columns([0.8, 0.2], vertical_alignment="bottom")
+
+        with res_cols[0]:
+            st.header("Resultados da extração")
+
+        tabs = st.tabs(["Provisão 13° salário"])
+
+        with tabs[0]:
+            st.subheader("Provisão 13° salário")
+            st.write("")
+            formated_df_13 = format_df_prov_13(df_13_proventos)
+            st.write(formated_df_13)
+
+            df_download_13 = formated_df_13.reset_index()
+            output = io.BytesIO()
+
+            with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                workbook = writer.book
+
+                first_day_this_month = datetime.now().replace(day=1)
+                last_day_prev_month = first_day_this_month - timedelta(days=1)
+                mes_ano_excel = last_day_prev_month.strftime("%m/%Y")
+
+                pdf_name = pdf_provento_file.name
+                m_pdf = re.search(r"(\d{1,2})\s+20\d{2}", pdf_name)
+                ano_pdf = re.search(r"202\d", pdf_name)
+
+                if m_pdf and ano_pdf:
+                    pdf_mes = m_pdf.group(1).zfill(2)
+                    pdf_ano = ano_pdf.group(0)
+                    mes_ano_excel = f"{pdf_mes}/{pdf_ano}"
+
+                df_download_13.to_excel(
+                    writer, index=False, sheet_name="Provisão 13°", startrow=3
+                )
+                worksheet_13 = writer.sheets["Provisão 13°"]
+                header_codigos = [
+                    "",
+                    "",
+                    "C-162.7 Prov 13° sal",
+                    "C-162.7 Prov 13° sal",
+                    "",
+                    "C-162.7 Prov 13° sal",
+                    "",
+                ]
+
+                fmt_header = workbook.add_format(
+                    {"bold": True, "align": "center", "valign": "vcenter"}
+                )
+
+                for col_idx, texto in enumerate(header_codigos):
+                    worksheet_13.write(2, col_idx, texto, fmt_header)
+
+                fmt_right = workbook.add_format({"align": "right", "valign": "vcenter"})
+                format_title = workbook.add_format(
+                    {
+                        "bold": True,
+                        "align": "left",
+                        "valign": "vcenter",
+                        "font_size": 14,
+                    }
+                )
+                format_sub = workbook.add_format(
+                    {
+                        "bold": True,
+                        "align": "left",
+                        "valign": "vcenter",
+                        "font_size": 12,
+                    }
+                )
+                worksheet_13.set_column(
+                    f"B6:F{len(df_download_13) + 7}", None, fmt_right
+                )
+                worksheet_13.merge_range(
+                    "A1:G1",
+                    "COMERCIAL BUFFON COMB. E TRANSPORTES LTDA",
+                    format_title,
+                )
+
+                worksheet_13.merge_range(
+                    "A2:G2",
+                    f"PROVISÃO 13° SALÁRIO REFERENTE MÊS {mes_ano_excel}",
+                    format_sub,
+                )
+
+                last_row_13 = len(df_download_13)
+
+                fmt_total = workbook.add_format(
+                    {"bold": True, "align": "right", "valign": "vcenter"}
+                )
+
+                worksheet_13.set_row(last_row_13 + 3, None, fmt_total)
+
+                nome_arquivo = f"resumo_provisao_13_salario_buffon_{mes_ano_excel}.xlsx"
+
+            with res_cols[1]:
+                xlsx_data = output.getvalue()
+                # Botão de download
+                st.download_button(
+                    label=":material/download: Baixar resultado geral",
+                    data=xlsx_data,
+                    file_name=nome_arquivo,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
+                    use_container_width=True,
+                )
+
+
 if uploaded_file is not None and "df_final" in locals():
     with st.container(border=True):
         res_cols = st.columns([0.8, 0.2], vertical_alignment="bottom")
@@ -472,11 +897,12 @@ if uploaded_file is not None and "df_final" in locals():
                     "Resumo Salários",
                     "Resumo FGTS",
                     "Resumo prolabore",
+                    "Provisão 13° salário",
                     "Dados Extraídos",
                 ]
             )
 
-            with tabs[3]:
+            with tabs[4]:
                 st.write(
                     "Tabela com todos os lançamentos extraídos do arquivo. "
                     "Você pode filtrar por **filial** e **tipo (Provento, Desconto)**."
@@ -589,6 +1015,22 @@ if uploaded_file is not None and "df_final" in locals():
                 df_filtrado.reset_index(drop=True, inplace=True)
 
                 st.dataframe(df_filtrado, width="stretch")
+
+            with tabs[3]:
+                st.subheader("Provisão 13° salário")
+                st.write("")
+                if (
+                    "df_13_proventos" in locals()
+                    and df_13_proventos is not None
+                    and not df_13_proventos.empty
+                ):
+                    formated_df_13 = format_df_prov_13(df_13_proventos)
+                    st.write(formated_df_13)
+                else:
+                    st.info(
+                        "Nenhuma informação de provisão de 13° salário foi encontrada. "
+                        "Verifique o arquivo enviado."
+                    )
 
             # ===============================
             # PROVENTOS POR FILIAL
@@ -1744,6 +2186,52 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         index=False,
                     )
 
+                if "df_13_proventos" in locals() and not df_13_proventos.empty:
+                    formated_df_13 = format_df_prov_13(df_13_proventos)
+                    df_download_13 = formated_df_13.reset_index()
+                    df_download_13.to_excel(
+                        writer, index=False, sheet_name="Provisão 13°", startrow=3
+                    )
+                    worksheet_13 = writer.sheets["Provisão 13°"]
+                    header_codigos = [
+                        "",
+                        "",
+                        "C-162.7 - Prov 13° sal.",
+                        "C-162.7 - Prov 13° sal.",
+                        "",
+                        "C-162.7 - Prov 13° sal.",
+                        "",
+                    ]
+
+                    fmt_header = workbook.add_format(
+                        {"bold": True, "align": "center", "valign": "vcenter"}
+                    )
+
+                    for col_idx, texto in enumerate(header_codigos):
+                        worksheet_13.write(2, col_idx, texto, fmt_header)
+
+                    worksheet_13.set_column(
+                        f"B6:F{len(df_download_13) + 7}", None, fmt_right
+                    )
+                    worksheet_13.merge_range(
+                        "A1:G1",
+                        "COMERCIAL BUFFON COMB. E TRANSPORTES LTDA",
+                        format_title,
+                    )
+
+                    worksheet_13.merge_range(
+                        "A2:G2",
+                        f"PROVISÃO 13° SALÁRIO REFERENTE MÊS {mes_ano_excel}",
+                        format_sub,
+                    )
+
+                    last_row_13 = len(df_download_13)
+
+                    fmt_total = workbook.add_format(
+                        {"bold": True, "align": "right", "valign": "vcenter"}
+                    )
+
+                    worksheet_13.set_row(last_row_13 + 3, None, fmt_total)
             # Gerar bytes
             xlsx_data = output.getvalue()
 
