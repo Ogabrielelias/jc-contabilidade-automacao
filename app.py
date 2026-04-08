@@ -600,6 +600,9 @@ with st.container(border=True):
                 pdf_qmes = mq_pdf.group(1).zfill(2)
                 pdf_qano = anoq_pdf.group(0)
 
+        pdf_pmes = None
+        pdf_pano = None
+
         if pdf_provento_file:
             pdf_p_name = pdf_provento_file.name
             mp_pdf = re.search(r"(\d{1,2})\s+20\d{2}", pdf_p_name)
