@@ -217,7 +217,7 @@ def consolidar_provisoes(tabelas_filiais):
                 "D-269.1 - 13° salário": valor_prov,
                 "D-1324.2 - Enc. s/13° sal.": valor_fgts,
                 "Pagas": valor_pagas,
-                "C-1324.2 - ENC s/ 13": valor_fgts_pagas,
+                "D-162.7 Prov 13° sal": valor_fgts_pagas,
                 "Total prov. 13°": valor_total_prov,
             }
         )
@@ -229,20 +229,20 @@ def consolidar_provisoes(tabelas_filiais):
         + df_consolidado["D-269.1 - 13° salário"]
         + df_consolidado["D-1324.2 - Enc. s/13° sal."]
         - df_consolidado["Pagas"]
-        - df_consolidado["C-1324.2 - ENC s/ 13"]
+        - df_consolidado["D-162.7 Prov 13° sal"]
     )
 
     df_consolidado["Total prov. 13°_dif"] = (
         df_consolidado["Total prov. 13°_sum"] - df_consolidado["Total prov. 13°"]
     )
 
-    mask_c_zero = df_consolidado["C-1324.2 - ENC s/ 13"] == 0
+    mask_c_zero = df_consolidado["D-1324.2 - Enc. s/13° sal."] == 0
 
     df_consolidado.loc[mask_c_zero, "D-1324.2 - Enc. s/13° sal."] -= df_consolidado.loc[
         mask_c_zero, "Total prov. 13°_dif"
     ]
 
-    df_consolidado.loc[~mask_c_zero, "C-1324.2 - ENC s/ 13"] += df_consolidado.loc[
+    df_consolidado.loc[~mask_c_zero, "D-162.7 Prov 13° sal"] += df_consolidado.loc[
         ~mask_c_zero, "Total prov. 13°_dif"
     ]
 
@@ -251,7 +251,7 @@ def consolidar_provisoes(tabelas_filiais):
         + df_consolidado["D-269.1 - 13° salário"]
         + df_consolidado["D-1324.2 - Enc. s/13° sal."]
         - df_consolidado["Pagas"]
-        - df_consolidado["C-1324.2 - ENC s/ 13"]
+        - df_consolidado["D-162.7 Prov 13° sal"]
     )
 
     df_consolidado = df_consolidado.drop(
@@ -434,6 +434,87 @@ def format_df_prov_13(df):
             )
 
     return df_formatted
+
+
+def trocar_headers_d_com_c(header_df, header_codigos):
+    header_df_trocado = header_df.copy()
+    header_codigos_trocado = header_codigos.copy()
+
+    for idx, (coluna_df, codigo_header) in enumerate(zip(header_df, header_codigos)):
+        if (
+            isinstance(coluna_df, str)
+            and coluna_df.startswith("D-")
+            and isinstance(codigo_header, str)
+            and codigo_header.startswith("C-")
+        ):
+            header_df_trocado[idx] = codigo_header
+            header_codigos_trocado[idx] = coluna_df
+
+    return header_df_trocado, header_codigos_trocado
+
+
+def escrever_dataframe_em_blocos(
+    worksheet,
+    df,
+    startrow,
+    startcol=0,
+    chunk_size=50,
+    custom_header_rows=None,
+    header_format=None,
+    data_format=None,
+    first_col_format=None,
+    last_row_format=None,
+):
+    custom_header_rows = custom_header_rows or []
+    total_linhas = len(df)
+    total_colunas = len(df.columns)
+
+    if total_colunas == 0:
+        return {"max_row": startrow - 1, "max_col": startcol - 1, "num_blocos": 0}
+
+    num_blocos = max(1, (total_linhas + chunk_size - 1) // chunk_size) if total_linhas else 1
+    largura_bloco = total_colunas + 1
+    max_row = startrow - 1
+    max_col = startcol - 1
+    ultimo_indice = df.index[-1] if total_linhas else None
+
+    for bloco_idx in range(num_blocos):
+        inicio = bloco_idx * chunk_size
+        fim = inicio + chunk_size
+        df_bloco = df.iloc[inicio:fim]
+        col_offset = startcol + bloco_idx * largura_bloco
+        row_cursor = startrow
+
+        for header_row in custom_header_rows:
+            for col_idx, valor in enumerate(header_row):
+                worksheet.write(row_cursor, col_offset + col_idx, valor, header_format)
+            row_cursor += 1
+
+        for col_idx, nome_coluna in enumerate(df.columns):
+            worksheet.write(row_cursor, col_offset + col_idx, nome_coluna, header_format)
+        row_cursor += 1
+
+        for idx, (_, row_data) in enumerate(df_bloco.iterrows()):
+            is_last_global_row = df_bloco.index[idx] == ultimo_indice
+            for col_idx, valor in enumerate(row_data.tolist()):
+                cell_format = None
+                if is_last_global_row and last_row_format is not None:
+                    cell_format = last_row_format
+                elif col_idx == 0 and first_col_format is not None:
+                    cell_format = first_col_format
+                elif col_idx > 0 and data_format is not None:
+                    cell_format = data_format
+
+                if cell_format is not None:
+                    worksheet.write(row_cursor, col_offset + col_idx, valor, cell_format)
+                else:
+                    worksheet.write(row_cursor, col_offset + col_idx, valor)
+            row_cursor += 1
+
+        max_row = max(max_row, row_cursor - 1)
+        max_col = max(max_col, col_offset + total_colunas - 1)
+
+    return {"max_row": max_row, "max_col": max_col, "num_blocos": num_blocos}
 
 
 st.set_page_config(page_title="JC Contabilidade - Postos Buffon", layout="wide")
@@ -810,19 +891,25 @@ if not uploaded_file and pdf_provento_file:
                     pdf_ano = ano_pdf.group(0)
                     mes_ano_excel = f"{pdf_mes}/{pdf_ano}"
 
-                df_download_13.to_excel(
-                    writer, index=False, sheet_name="Provisão 13°", startrow=3
-                )
-                worksheet_13 = writer.sheets["Provisão 13°"]
                 header_codigos = [
                     "",
                     "",
                     "C-162.7 Prov 13° sal",
                     "C-162.7 Prov 13° sal",
                     "",
-                    "C-162.7 Prov 13° sal",
+                    "C-1324.2 - ENC s/ 13",
                     "",
                 ]
+                header_df_13, header_codigos = trocar_headers_d_com_c(
+                    df_download_13.columns.tolist(), header_codigos
+                )
+                df_download_13_export = df_download_13.copy()
+                df_download_13_export.columns = header_df_13
+
+                df_download_13_export.to_excel(
+                    writer, index=False, sheet_name="Provisão 13°", startrow=3
+                )
+                worksheet_13 = writer.sheets["Provisão 13°"]
 
                 fmt_header = workbook.add_format(
                     {"bold": True, "align": "center", "valign": "vcenter"}
@@ -863,7 +950,7 @@ if not uploaded_file and pdf_provento_file:
                     format_sub,
                 )
 
-                last_row_13 = len(df_download_13)
+                last_row_13 = len(df_download_13_export)
 
                 fmt_total = workbook.add_format(
                     {"bold": True, "align": "right", "valign": "vcenter"}
@@ -1175,8 +1262,7 @@ if uploaded_file is not None and "df_final" in locals():
                 # 🔹 Renderizar Multiselects (2 colunas)
                 # ==========================================================
                 with st.expander("Configuração de códigos somados por coluna"):
-                    st.markdown(
-                        """
+                    st.markdown("""
 As colunas especiais representam grupos de códigos de proventos e descontos que devem ser somados para compor cada categoria exibida na tabela final.  
 Cada coluna é formada pela soma dos valores de todos os códigos selecionados a baixo.
 
@@ -1192,8 +1278,7 @@ Qualquer alteração feita aqui afeta diretamente os cálculos da tabela abaixo,
 Ou seja, esta área define **a lógica de cálculo da planilha**. Cada coluna especial nada mais é do que a soma dos códigos escolhidos para ela.
 
 Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, mas você pode adicionar ou remover códigos conforme necessário.
-                    """
-                    )
+                    """)
                     col1, col2 = st.columns(2)
                     col_toggle = False
                     codigos_escolhidos = {}
@@ -1883,6 +1968,11 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 by="Filial", key=lambda col: col.map(sort_buffon)
             )
             df_download_extra_caixa = df_quebra.reset_index().copy()
+            coluna_fgts = "D-271.2 FGTS - C-145.7 FGTS a rec"
+            if coluna_fgts in df_download_extra_caixa.columns:
+                df_download_extra_caixa = df_download_extra_caixa[
+                    ["Filial", coluna_fgts]
+                ].copy()
 
             col_filial_original = df_download_totais["Filial"].copy()
 
@@ -2125,21 +2215,15 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         separar_header_em_duas_linhas(header_caixa)
                     )
 
-                    # Escrever dataframe começando na mesma linha
-                    df_download_extra_caixa.to_excel(
-                        writer, index=False, sheet_name="FGTS e Honorários", startrow=3
-                    )
-
-                    # Linha 1 → códigos contábeis
-                    for col_idx, codigo in enumerate(header_codigos_caixa):
-                        worksheet_caixa.write(2, col_idx, codigo, fmt_num)
-
-                    # Linha 2 → descrições
-                    for col_idx, nome in enumerate(header_nomes_caixa):
-                        worksheet_caixa.write(3, col_idx, nome, fmt_num)
-
-                    worksheet_caixa.set_column(
-                        f"B6:F{len(df_download_extra_caixa) + 3}", None, fmt_right
+                    layout_caixa = escrever_dataframe_em_blocos(
+                        worksheet_caixa,
+                        df_download_extra_caixa,
+                        startrow=2,
+                        startcol=0,
+                        chunk_size=50,
+                        custom_header_rows=[header_codigos_caixa],
+                        header_format=fmt_num,
+                        data_format=fmt_right,
                     )
 
                     # Linha 0 → título
@@ -2167,7 +2251,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         }
                     )
 
-                    start_row_honorarios = len(df_download_extra_caixa) + 6
+                    start_row_honorarios = layout_caixa["max_row"] + 3
 
                     worksheet_caixa.merge_range(
                         start_row_honorarios - 1,
@@ -2192,19 +2276,25 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 if "df_13_proventos" in locals() and not df_13_proventos.empty:
                     formated_df_13 = format_df_prov_13(df_13_proventos)
                     df_download_13 = formated_df_13.reset_index()
-                    df_download_13.to_excel(
-                        writer, index=False, sheet_name="Provisão 13°", startrow=3
-                    )
-                    worksheet_13 = writer.sheets["Provisão 13°"]
                     header_codigos = [
                         "",
                         "",
-                        "C-162.7 - Prov 13° sal.",
-                        "C-162.7 - Prov 13° sal.",
+                        "C-162.7 Prov 13° sal",
+                        "C-162.7 Prov 13° sal",
                         "",
-                        "C-162.7 - Prov 13° sal.",
+                        "C-1324.2 - ENC s/ 13",
                         "",
                     ]
+                    header_df_13, header_codigos = trocar_headers_d_com_c(
+                        df_download_13.columns.tolist(), header_codigos
+                    )
+                    df_download_13_export = df_download_13.copy()
+                    df_download_13_export.columns = header_df_13
+
+                    df_download_13_export.to_excel(
+                        writer, index=False, sheet_name="Provisão 13°", startrow=3
+                    )
+                    worksheet_13 = writer.sheets["Provisão 13°"]
 
                     fmt_header = workbook.add_format(
                         {"bold": True, "align": "center", "valign": "vcenter"}
@@ -2228,7 +2318,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         format_sub,
                     )
 
-                    last_row_13 = len(df_download_13)
+                    last_row_13 = len(df_download_13_export)
 
                     fmt_total = workbook.add_format(
                         {"bold": True, "align": "right", "valign": "vcenter"}
