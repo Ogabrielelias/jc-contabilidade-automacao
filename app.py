@@ -112,6 +112,15 @@ def sort_tipo(value):
     return order.get(value, 99)
 
 
+def sort_codigo(value):
+    """Ordena códigos numéricos primeiro e mantém valores inválidos no final."""
+    texto = str(value).strip()
+    try:
+        return (0, float(texto.replace(",", ".")))
+    except (TypeError, ValueError):
+        return (1, texto.casefold())
+
+
 def detectar_filial(texto):
     match = regex_filial.search(texto)
     if not match:
@@ -584,7 +593,9 @@ with st.container(border=True):
         )
 
     regex_filial = re.compile(r"RESUMO\s+(Filial|Matriz):\s*(\d+)", re.IGNORECASE)
-    regex_funcionarios = re.compile(r"Nesta\s+Folha\s+(\d+)", re.IGNORECASE)
+    regex_funcionarios = re.compile(
+        r"Nesta\s+Folha\s*:?\s*(\d+)", re.IGNORECASE
+    )
     regex_salario = re.compile(
         r"Mensal\s*\+\s*13º\s*Salário\s+([\d\.]+,\d{2})", re.IGNORECASE
     )
@@ -611,22 +622,32 @@ with st.container(border=True):
     if pdf_file:
         doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
         resultados = []
+        aguardando_funcionarios = False
 
         for i, page in enumerate(doc):
             text = page.get_text()
             filial = detectar_filial(text)
             funcionarios = detectar_funcionarios(text)
+
+            # O resumo geral também possui um campo "Nesta Folha", mas ele
+            # não pertence à última filial. Ele encerra a associação pendente.
+            if "RESUMO DO PERÍODO" in text.upper():
+                aguardando_funcionarios = False
+
             if filial is not None:
                 resultados.append(
                     {
                         "Filial": filial,
-                        "Func.": (
-                            funcionarios
-                            if funcionarios is not None
-                            else "Não encontrado"
-                        ),
+                        "Func.": funcionarios,
                     }
                 )
+                aguardando_funcionarios = funcionarios is None
+            elif funcionarios is not None and resultados and aguardando_funcionarios:
+                # O resumo da filial pode terminar em uma página e o bloco
+                # "Nesta Folha" aparecer na página seguinte. Nesse caso, o
+                # funcionário pertence à última filial identificada.
+                resultados[-1]["Func."] = funcionarios
+                aguardando_funcionarios = False
 
         if len(resultados) == 0:
             st.warning(
@@ -999,7 +1020,7 @@ if uploaded_file is not None and "df_final" in locals():
                 )
                 df_table = df_final[
                     ["codigo", "descricao", "valor", "nome", "filial", "cnpj", "digito"]
-                ]
+                ].copy()
                 digito_map = {
                     "P": "Provento",
                     "D": "Desconto",
@@ -1057,7 +1078,7 @@ if uploaded_file is not None and "df_final" in locals():
                 with col3:
                     codigos_opcoes = sorted(
                         df_table["codigo_fmt"].dropna().unique(),
-                        key=lambda x: int(x.split(" – ")[0]),
+                        key=lambda x: sort_codigo(x.split(" – ")[0]),
                     )
                     codigos_selecionados_fmt = st.multiselect(
                         "Filtrar por Código:",
@@ -1285,7 +1306,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
 
                     todos_codigos = sorted(
                         df_final["codigo"].astype(str).dropna().unique(),
-                        key=lambda x: int(x),
+                        key=sort_codigo,
                     )
 
                     codigos_existentes = (
@@ -1305,7 +1326,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
 
                     codigos_formatados = sorted(
                         [c for c in codigo_map if codigo_map[c] in codigos_existentes],
-                        key=lambda x: int(x.split(" – ")[0]),
+                        key=lambda x: sort_codigo(x.split(" – ")[0]),
                     )
 
                     # Filtrar padrões que realmente existem no CSV
@@ -1698,7 +1719,14 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         df_totais, df_pdf, on="Filial", how="outer"
                     ).fillna(0)
 
-                    df_totais["Func."] = df_totais["Func."].astype(int)
+                    # Algumas páginas podem não conter o texto de funcionários.
+                    # Nesses casos, o valor fica como "Não encontrado" e não pode
+                    # ser convertido diretamente com astype(int).
+                    df_totais["Func."] = (
+                        pd.to_numeric(df_totais["Func."], errors="coerce")
+                        .fillna(0)
+                        .astype(int)
+                    )
 
                 # Outras colunas numéricas não-R$ (se existirem)
                 colunas_numericas = [
