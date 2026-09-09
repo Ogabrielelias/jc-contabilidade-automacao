@@ -1361,12 +1361,21 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         zip(df_final["codigo_desc"], df_final["codigo"].astype(str))
                     )
 
+                    # Preservar os códigos configurados mesmo quando não constam
+                    # na planilha atual, seguindo o comportamento das demais colunas.
+                    codigos_padrao = [str(cod) for cod in codigos_padrao]
+                    for cod in codigos_padrao:
+                        if cod not in codigos_existentes:
+                            codigo_map[
+                                f"{cod} - (Não encontrado na planilha)"
+                            ] = cod
+
                     codigos_formatados = sorted(
-                        [c for c in codigo_map if codigo_map[c] in codigos_existentes],
-                        key=lambda x: sort_codigo(x.split(" – ")[0]),
+                        codigo_map,
+                        key=lambda x: sort_codigo(codigo_map[x]),
                     )
 
-                    # Filtrar padrões que realmente existem no CSV
+                    # Manter selecionados também os padrões ausentes no CSV atual.
                     codigos_default_fmt = [
                         c for c in codigos_formatados if codigo_map[c] in codigos_padrao
                     ]
