@@ -1,3 +1,5 @@
 .venv
 .env
 */secrets.toml
+__pycache__/
+tmp/

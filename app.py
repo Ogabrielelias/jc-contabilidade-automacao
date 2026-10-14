@@ -9,6 +9,10 @@ from datetime import datetime, timedelta
 from streamlit import session_state as ss
 from supabase import create_client
 import json
+from folha_pdf import extrair_resumos_pdf
+from folha_detalhes_ui import carregar_detalhes
+from folha_config import CHAVE_CONFIG_PDF, config_pdf_inicial, dataframe_lancamentos_pdf
+from folha_config_ui import configurar_pdf
 
 SUPABASE_URL = st.secrets["supabase_url"]
 SUPABASE_KEY = st.secrets["supabase_key"]
@@ -26,19 +30,25 @@ def has_supabase_error(resp):
 
 def salvar_config(chave, valor):
     try:
-        supabase.table("configuracoes_codigos").upsert(
-            {"chave": chave, "valor": valor}, on_conflict="chave"
-        ).execute()
+        resp = (
+            supabase.table("configuracoes_codigos")
+            .upsert({"chave": chave, "valor": valor}, on_conflict="chave")
+            .execute()
+        )
+        return not has_supabase_error(resp)
     except httpx.HTTPError as e:
         st.toast(
             f"Erro conectar no banco de dados para salvar os códigos contábeis. Se o erro persistir contate o suporte."
         )
         print(e)
+
     except Exception as e:
         st.toast(
             f"Erro inesperado ao salvar os códigos contábeis no banco de dados. Se o erro persistir contate o suporte."
         )
         print(e)
+
+    return False
 
 
 def carregar_config(chave, default=None):
@@ -84,7 +94,7 @@ def sort_buffon(value):
     if value.lower() == "matriz":
         return (0, 0)
 
-    m = re.match(r"Buffon\s+(\d+)", value)
+    m = re.match(r"(?:Buffon|Filial)\s+(\d+)", value)
     if m:
         return (1, int(m.group(1)))
 
@@ -119,15 +129,6 @@ def sort_codigo(value):
         return (0, float(texto.replace(",", ".")))
     except (TypeError, ValueError):
         return (1, texto.casefold())
-
-
-def detectar_filial(texto):
-    match = regex_filial.search(texto)
-    if not match:
-        return None
-    tipo = match.group(1).capitalize()
-    numero = match.group(2)
-    return f"Filial {int(numero) - 1}" if tipo == "Filial" else "Matriz"
 
 
 def detectar_provento_filial(texto):
@@ -377,20 +378,6 @@ def extrair_tabelas_por_filial(uploaded_file):
     return filiais
 
 
-def detectar_funcionarios(texto):
-    match = regex_funcionarios.search(texto)
-    if not match:
-        return None
-    return int(match.group(1))
-
-
-def detectar_salario(texto):
-    match = regex_salario.search(texto)
-    if match:
-        return match.group(1)
-    return None
-
-
 def br_to_float(v):
     return (
         str(v).replace("R$", "").replace(".", "").replace(",", ".").strip()
@@ -481,7 +468,9 @@ def escrever_dataframe_em_blocos(
     if total_colunas == 0:
         return {"max_row": startrow - 1, "max_col": startcol - 1, "num_blocos": 0}
 
-    num_blocos = max(1, (total_linhas + chunk_size - 1) // chunk_size) if total_linhas else 1
+    num_blocos = (
+        max(1, (total_linhas + chunk_size - 1) // chunk_size) if total_linhas else 1
+    )
     largura_bloco = total_colunas + 1
     max_row = startrow - 1
     max_col = startcol - 1
@@ -500,7 +489,9 @@ def escrever_dataframe_em_blocos(
             row_cursor += 1
 
         for col_idx, nome_coluna in enumerate(df.columns):
-            worksheet.write(row_cursor, col_offset + col_idx, nome_coluna, header_format)
+            worksheet.write(
+                row_cursor, col_offset + col_idx, nome_coluna, header_format
+            )
         row_cursor += 1
 
         for idx, (_, row_data) in enumerate(df_bloco.iterrows()):
@@ -515,7 +506,9 @@ def escrever_dataframe_em_blocos(
                     cell_format = data_format
 
                 if cell_format is not None:
-                    worksheet.write(row_cursor, col_offset + col_idx, valor, cell_format)
+                    worksheet.write(
+                        row_cursor, col_offset + col_idx, valor, cell_format
+                    )
                 else:
                     worksheet.write(row_cursor, col_offset + col_idx, valor)
             row_cursor += 1
@@ -556,106 +549,72 @@ st.markdown("<hr style='padding:0;margin:16px 0;'>", unsafe_allow_html=True)
 with st.container(border=True):
     st.header("Postos Buffon - Folha de Salários")
 
+    fonte_pdf = True
+    # fonte_pdf = st.radio(
+    #     "Fonte dos lançamentos", ["Novo PDF da folha", "CSV (padrão antigo)"],
+    #     horizontal=True, key="fonte_lancamentos",
+    # ) == "Novo PDF da folha"
+    config_pdf = None
+    dados_folha_pdf = None
+
     st.markdown("<hr style='padding:0;margin:16px 0;'>", unsafe_allow_html=True)
 
     upload_cols = st.columns(2)
-    st.markdown("<hr style='padding:0;margin:16px 0;'>", unsafe_allow_html=True)
-    upload_cols_2 = st.columns(2)
+    uploaded_file = None
+    pdf_quebra_file = None
 
-    with upload_cols[0]:
-        st.write(
-            "Envie aqui o arquivo **CSV (Planilha Excel)** para extrair as informações contábeis."
-        )
-        uploaded_file = st.file_uploader("Selecione o arquivo CSV", type=["csv"])
+    if fonte_pdf:
+        with upload_cols[0]:
+            st.write(
+                "Envie o **novo PDF da folha de salários** para extrair os lançamentos, funcionários ativos e FGTS."
+            )
+            pdf_file = st.file_uploader(
+                "PDF da folha de salários", type=["pdf"], key="pdf_funcionarios"
+            )
+        coluna_provisao = upload_cols[1]
+    else:
+        with upload_cols[0]:
+            st.write("Envie o CSV para extrair as informações contábeis.")
+            uploaded_file = st.file_uploader("Selecione o arquivo CSV", type=["csv"])
+        with upload_cols[1]:
+            st.write(
+                "Envie o **PDF da folha de salários** no padrão antigo ou novo para agregar "
+                "os funcionários de cada filial. No novo padrão, são contados os contratos ativos."
+            )
+            pdf_file = st.file_uploader(
+                "Selecione o arquivo PDF", type=["pdf"], key="pdf_funcionarios"
+            )
+        st.markdown("<hr style='padding:0;margin:16px 0;'>", unsafe_allow_html=True)
+        upload_cols_2 = st.columns(2)
+        with upload_cols_2[0]:
+            st.write("Envie o **PDF de FGTS** para extrair os valores de cada filial.")
+            pdf_quebra_file = st.file_uploader(
+                "Selecione o arquivo PDF", type=["pdf"], key="pdf_quebra"
+            )
+        coluna_provisao = upload_cols_2[1]
 
-    with upload_cols[1]:
+    with coluna_provisao:
         st.write(
-            "Envie aqui o arquivo **PDF** para agregar as informações de funcionários de cada filial."
-        )
-        pdf_file = st.file_uploader(
-            "Selecione o arquivo PDF", type=["pdf"], key="pdf_funcionarios"
-        )
-
-    with upload_cols_2[0]:
-        st.write(
-            "Envie aqui o arquivo **PDF** extrair as informações do FGTS de cada filial."
-        )
-        pdf_quebra_file = st.file_uploader(
-            "Selecione o arquivo PDF", type=["pdf"], key="pdf_quebra"
-        )
-
-    with upload_cols_2[1]:
-        st.write(
-            "Envie aqui o arquivo **PDF** extrair as informações de proventos 13º salário de cada filial."
+            "Envie o **PDF de provisão de 13º salário**, opcional, para incluir os saldos e movimentos de cada filial."
         )
         pdf_provento_file = st.file_uploader(
-            "Selecione o arquivo PDF", type=["pdf"], key="pdf_prov"
+            "PDF de provisão de 13º salário (opcional)", type=["pdf"], key="pdf_prov"
         )
 
-    regex_filial = re.compile(r"RESUMO\s+(Filial|Matriz):\s*(\d+)", re.IGNORECASE)
-    regex_funcionarios = re.compile(
-        r"Nesta\s+Folha\s*:?\s*(\d+)", re.IGNORECASE
-    )
-    regex_salario = re.compile(
-        r"Mensal\s*\+\s*13º\s*Salário\s+([\d\.]+,\d{2})", re.IGNORECASE
-    )
-
     if pdf_quebra_file:
-        doc_quebra = fitz.open(stream=pdf_quebra_file.read(), filetype="pdf")
-        resultados_quebra = []
-
-        for i, page in enumerate(doc_quebra):
-            text = page.get_text()
-            filial = detectar_filial(text)
-            salario = detectar_salario(text)
-
-            if filial is not None:
-                resultados_quebra.append(
-                    {
-                        "Filial": filial,
-                    }
-                )
-
-            if salario is not None and resultados_quebra[-1].get("Salário") is None:
-                resultados_quebra[-1]["Salário"] = salario
+        resultados_quebra = [
+            {chave: valor for chave, valor in linha.items() if chave != "Func."}
+            for linha in extrair_resumos_pdf(pdf_quebra_file.getvalue())
+        ]
 
     if pdf_file:
-        doc = fitz.open(stream=pdf_file.read(), filetype="pdf")
-        resultados = []
-        aguardando_funcionarios = False
-
-        for i, page in enumerate(doc):
-            text = page.get_text()
-            filial = detectar_filial(text)
-            funcionarios = detectar_funcionarios(text)
-
-            # O resumo geral também possui um campo "Nesta Folha", mas ele
-            # não pertence à última filial. Ele encerra a associação pendente.
-            if "RESUMO DO PERÍODO" in text.upper():
-                aguardando_funcionarios = False
-
-            if filial is not None:
-                resultados.append(
-                    {
-                        "Filial": filial,
-                        "Func.": funcionarios,
-                    }
-                )
-                aguardando_funcionarios = funcionarios is None
-            elif funcionarios is not None and resultados and aguardando_funcionarios:
-                # O resumo da filial pode terminar em uma página e o bloco
-                # "Nesta Folha" aparecer na página seguinte. Nesse caso, o
-                # funcionário pertence à última filial identificada.
-                resultados[-1]["Func."] = funcionarios
-                aguardando_funcionarios = False
-
-        if len(resultados) == 0:
+        resultados = extrair_resumos_pdf(pdf_file.getvalue())
+        if not resultados:
             st.warning(
                 "Nenhuma filial foi detectada no arquivo PDF enviado. "
                 "Verifique se o arquivo enviado está correto."
             )
-
-        df_pdf = pd.DataFrame(resultados)
+        df_pdf = pd.DataFrame(resultados, columns=["Filial", "Func."])
 
     if (
         (uploaded_file and pdf_file)
@@ -878,7 +837,72 @@ with st.container(border=True):
             print(f"[ERRO] {e}")
             st.stop()
 
-if not uploaded_file and pdf_provento_file:
+if fonte_pdf and pdf_file:
+    try:
+        dados_folha_pdf = carregar_detalhes(pdf_file.getvalue())
+        if not dados_folha_pdf["documento"]:
+            st.warning(
+                "Para calcular sem CSV, envie a folha no novo padrão por estabelecimento."
+            )
+        else:
+            resultados_pdf = st.container(border=True)
+            with resultados_pdf:
+                res_cols_pdf = st.columns([0.8, 0.2], vertical_alignment="bottom")
+                with res_cols_pdf[0]:
+                    st.header("Resultados da extração")
+                tabs_pdf = st.tabs(
+                    [
+                        "Resumo Salários",
+                        "Resumo FGTS",
+                        "Resumo prolabore",
+                        "Provisão 13° salário",
+                        "Dados Extraídos",
+                    ]
+                )
+                with tabs_pdf[0]:
+                    st.subheader("Resumo de Salários")
+                    st.write("")
+                    config_pdf = configurar_pdf(
+                        dados_folha_pdf,
+                        carregar_config(CHAVE_CONFIG_PDF, default=config_pdf_inicial()),
+                        salvar_config,
+                    )
+                    periodo_pdf = dados_folha_pdf["documento"][0]["Fim"]
+                    if not periodo_pdf:
+                        raise ValueError(
+                            "Não foi possível identificar a competência no conteúdo do PDF."
+                        )
+                    data_folha = datetime.strptime(periodo_pdf, "%d/%m/%Y")
+                    ss["csv_mes"] = data_folha.strftime("%m")
+                    ss["csv_ano"] = data_folha.strftime("%Y")
+                    if pdf_provento_file:
+                        competencia_provisao = re.search(
+                            r"(\d{1,2})\s+(20\d{2})", pdf_provento_file.name
+                        )
+                        if competencia_provisao and (
+                            competencia_provisao[1].zfill(2),
+                            competencia_provisao[2],
+                        ) != (ss["csv_mes"], ss["csv_ano"]):
+                            st.warning(
+                                "A competência do PDF de provisão de 13º difere da folha de salários."
+                            )
+                    if config_pdf["configurado"]:
+                        df_final = dataframe_lancamentos_pdf(
+                            dados_folha_pdf, config_pdf
+                        )
+                        resultados_quebra = [
+                            {"Filial": r["Unidade"], "Salário": r["Vlr. FGTS"]}
+                            for r in dados_folha_pdf["resumos"]
+                            if r["Unidade"] != "Total da empresa"
+                        ]
+    except (ValueError, RuntimeError, KeyError) as erro:
+        # Não aproveitar um dataframe parcial após falha de leitura/configuração.
+        if "df_final" in locals():
+            del df_final
+        st.error(f"Não foi possível preparar a folha PDF: {erro}")
+
+
+if "df_final" not in locals() and pdf_provento_file:
     with st.container(border=True):
         res_cols = st.columns([0.8, 0.2], vertical_alignment="bottom")
 
@@ -994,24 +1018,28 @@ if not uploaded_file and pdf_provento_file:
                 )
 
 
-if uploaded_file is not None and "df_final" in locals():
-    with st.container(border=True):
-        res_cols = st.columns([0.8, 0.2], vertical_alignment="bottom")
+if "df_final" in locals():
+    with resultados_pdf if fonte_pdf else st.container(border=True):
+        if fonte_pdf:
+            res_cols = res_cols_pdf
+            tabs = tabs_pdf
+        else:
+            res_cols = st.columns([0.8, 0.2], vertical_alignment="bottom")
 
-        with res_cols[0]:
-            st.header("Resultados da extração")
+            with res_cols[0]:
+                st.header("Resultados da extração")
 
         try:
-
-            tabs = st.tabs(
-                [
-                    "Resumo Salários",
-                    "Resumo FGTS",
-                    "Resumo prolabore",
-                    "Provisão 13° salário",
-                    "Dados Extraídos",
-                ]
-            )
+            if not fonte_pdf:
+                tabs = st.tabs(
+                    [
+                        "Resumo Salários",
+                        "Resumo FGTS",
+                        "Resumo prolabore",
+                        "Provisão 13° salário",
+                        "Dados Extraídos",
+                    ]
+                )
 
             with tabs[4]:
                 st.write(
@@ -1147,13 +1175,26 @@ if uploaded_file is not None and "df_final" in locals():
             # PROVENTOS POR FILIAL
             # ===============================
             with tabs[0]:
-                st.subheader("Resumo de Salários")
-                st.write("")
+                if not fonte_pdf:
+                    st.subheader("Resumo de Salários")
+                    st.write("")
                 df_soma = (
                     df_final[df_final["digito"] == "P"]
                     .groupby("filial", as_index=False)["valor_num"]
                     .sum()
                 )
+                if fonte_pdf:
+                    unidades_pdf = [
+                        r["Unidade"]
+                        for r in dados_folha_pdf["resumos"]
+                        if r["Unidade"] != "Total da empresa"
+                    ]
+                    df_soma = (
+                        df_soma.set_index("filial")
+                        .reindex(unidades_pdf, fill_value=0)
+                        .rename_axis("filial")
+                        .reset_index()
+                    )
 
                 df_soma.rename(columns={"filial": "Nome da Filial"}, inplace=True)
 
@@ -1168,115 +1209,90 @@ if uploaded_file is not None and "df_final" in locals():
                     .replace("X", ".")
                 )
 
-                COLUNAS_ESPECIAIS = carregar_config(
-                    "COLUNAS_ESPECIAIS",
-                    default={
-                      "C-270.4 - INSS": [
-                        "901"
-                      ],
-                      "C-275.5 - V.T.": [
-                        "93",
-                        "240"
-                      ],
-                      "C-297.6 - Farm.": [
-                        "231",
-                        "363"
-                      ],
-                      "C-142.2 - P.Alim.": [
-                        "908"
-                      ],
-                      "C-51.5 - Ad. Sal.": [
-                        "29",
-                        "30",
-                        "31",
-                        "32",
-                        "33",
-                        "34",
-                        "35",
-                        "36",
-                        "37",
-                        "38",
-                        "150",
-                        "151",
-                        "152",
-                        "153",
-                        "154",
-                        "155",
-                        "156",
-                        "157",
-                        "158",
-                        "159"
-                      ],
-                      "C-147.3 - IRF rec.": [
-                        "941"
-                      ],
-                      "D-53.1 - Sal. Mat.": [
-                        "130"
-                      ],
-                      "D-54.0 - Sal. Fam.": [
-                        "907"
-                      ],
-                      "C-146.5 - Sind. Rec.": [
-                        "259",
-                        "260",
-                        "933",
-                        "11992",
-                        "20078",
-                        "20088",
-                        "20090"
-                      ],
-                      "C-297.6 - Pl. Saúde": [
-                        "233",
-                        "241",
-                        "242",
-                        "262",
-                        "12003",
-                        "20091",
-                        "20110"
-                      ],
-                      "C-302.6 - Cest. Bas.": [
-                        "258",
-                        "20080"
-                      ],
-                      "D-52.3 - Ad 13° Sal.": [
-                        "169",
-                        "170",
-                        "171",
-                        "173"
-                      ],
-                      "C-51.5 - Desc. Ad. Sal.": [
-                        "44"
-                      ],
-                      "C-2267.5 - Conf. dívida": [
-                        "3600"
-                      ],
-                      "C-22667 - D-CAIXA (Desc. emp. Consig.)": [
-                        "20086"
-                      ]
-                    },
-                )
+                if fonte_pdf:
+                    COLUNAS_ESPECIAIS = config_pdf["colunas_especiais"]
+                    codigos_padrao = config_pdf["codigos_padrao"]
+                    codigos_selecionados = codigos_padrao
+                else:
+                    COLUNAS_ESPECIAIS = carregar_config(
+                        "COLUNAS_ESPECIAIS",
+                        default={
+                            "C-270.4 - INSS": ["901"],
+                            "C-275.5 - V.T.": ["93", "240"],
+                            "C-297.6 - Farm.": ["231", "363"],
+                            "C-142.2 - P.Alim.": ["908"],
+                            "C-51.5 - Ad. Sal.": [
+                                "29",
+                                "30",
+                                "31",
+                                "32",
+                                "33",
+                                "34",
+                                "35",
+                                "36",
+                                "37",
+                                "38",
+                                "150",
+                                "151",
+                                "152",
+                                "153",
+                                "154",
+                                "155",
+                                "156",
+                                "157",
+                                "158",
+                                "159",
+                            ],
+                            "C-147.3 - IRF rec.": ["941"],
+                            "D-53.1 - Sal. Mat.": ["130"],
+                            "D-54.0 - Sal. Fam.": ["907"],
+                            "C-146.5 - Sind. Rec.": [
+                                "259",
+                                "260",
+                                "933",
+                                "11992",
+                                "20078",
+                                "20088",
+                                "20090",
+                            ],
+                            "C-297.6 - Pl. Saúde": [
+                                "233",
+                                "241",
+                                "242",
+                                "262",
+                                "12003",
+                                "20091",
+                                "20110",
+                            ],
+                            "C-302.6 - Cest. Bas.": ["258", "20080"],
+                            "D-52.3 - Ad 13° Sal.": ["169", "170", "171", "173"],
+                            "C-51.5 - Desc. Ad. Sal.": ["44"],
+                            "C-2267.5 - Conf. dívida": ["3600"],
+                            "C-22667 - D-CAIXA (Desc. emp. Consig.)": ["20086"],
+                        },
+                    )
 
-                codigos_padrao = carregar_config(
-                    "codigos_padrao",
-                    default=[
-                      "3",
-                      "6",
-                      "17",
-                      "19",
-                      "22",
-                      "23",
-                      "24",
-                      "130",
-                      "169",
-                      "170",
-                      "171",
-                      "173",
-                      "252",
-                      "907",
-                      "911",
-                      "938"
-                    ],
-                )
+                    codigos_padrao = carregar_config(
+                        "codigos_padrao",
+                        default=[
+                            "3",
+                            "6",
+                            "17",
+                            "19",
+                            "22",
+                            "23",
+                            "24",
+                            "130",
+                            "169",
+                            "170",
+                            "171",
+                            "173",
+                            "252",
+                            "907",
+                            "911",
+                            "938",
+                        ],
+                    )
 
                 # ==========================================================
                 # 🔹 Construir opções no formato "codigo - descricao"
@@ -1319,209 +1335,208 @@ if uploaded_file is not None and "df_final" in locals():
                 # ==========================================================
                 # 🔹 Renderizar Multiselects (2 colunas)
                 # ==========================================================
-                with st.expander("Configuração de códigos somados por coluna"):
-                    st.markdown("""
-As colunas especiais representam grupos de códigos de proventos e descontos que devem ser somados para compor cada categoria exibida na tabela final.  
+                if not fonte_pdf:
+                    with st.expander("Configuração de códigos somados por coluna"):
+                        st.markdown("""
+As colunas especiais representam grupos de códigos de proventos e descontos que devem ser somados para compor cada categoria exibida na tabela final.
 Cada coluna é formada pela soma dos valores de todos os códigos selecionados a baixo.
 
-Você pode ajustar livremente quais códigos pertencem a cada coluna.  
+Você pode ajustar livremente quais códigos pertencem a cada coluna.
 Qualquer alteração feita aqui afeta diretamente os cálculos da tabela abaixo, incluindo:
 
 - o total de salário líquido (**D-266.6 - T. salário**)
-- o subtotal (**C-152.0 - Sub. T.**)  
-- o salário a pagar (**C-152.0 - Sal. a pagar**)  
-- o resultado final (**Resultado**)  
+- o subtotal (**C-152.0 - Sub. T.**)
+- o salário a pagar (**C-152.0 - Sal. a pagar**)
+- o resultado final (**Resultado**)
 - e todos os totais gerais
 
 Ou seja, esta área define **a lógica de cálculo da planilha**. Cada coluna especial nada mais é do que a soma dos códigos escolhidos para ela.
 
 Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, mas você pode adicionar ou remover códigos conforme necessário.
                     """)
-                    col1, col2 = st.columns(2)
-                    col_toggle = False
-                    codigos_escolhidos = {}
+                        col1, col2 = st.columns(2)
+                        col_toggle = False
+                        codigos_escolhidos = {}
 
-                    todos_codigos = sorted(
-                        df_final["codigo"].astype(str).dropna().unique(),
-                        key=sort_codigo,
-                    )
+                        todos_codigos = sorted(
+                            df_final["codigo"].astype(str).dropna().unique(),
+                            key=sort_codigo,
+                        )
 
-                    codigos_existentes = (
-                        df_final["codigo"].astype(str).unique().tolist()
-                    )
+                        codigos_existentes = (
+                            df_final["codigo"].astype(str).unique().tolist()
+                        )
 
-                    # Criar código – descrição apenas dentro do tipo correto
-                    df_final["codigo_desc"] = (
-                        df_final["codigo"].astype(str)
-                        + " – "
-                        + df_final["descricao"].astype(str)
-                    )
+                        # Criar código – descrição apenas dentro do tipo correto
+                        df_final["codigo_desc"] = (
+                            df_final["codigo"].astype(str)
+                            + " – "
+                            + df_final["descricao"].astype(str)
+                        )
 
-                    codigo_map = dict(
-                        zip(df_final["codigo_desc"], df_final["codigo"].astype(str))
-                    )
+                        codigo_map = dict(
+                            zip(df_final["codigo_desc"], df_final["codigo"].astype(str))
+                        )
 
-                    # Preservar os códigos configurados mesmo quando não constam
-                    # na planilha atual, seguindo o comportamento das demais colunas.
-                    codigos_padrao = [str(cod) for cod in codigos_padrao]
-                    for cod in codigos_padrao:
-                        if cod not in codigos_existentes:
-                            codigo_map[
-                                f"{cod} - (Não encontrado na planilha)"
-                            ] = cod
+                        # Preservar os códigos configurados mesmo quando não constam
+                        # na planilha atual, seguindo o comportamento das demais colunas.
+                        codigos_padrao = [str(cod) for cod in codigos_padrao]
+                        for cod in codigos_padrao:
+                            if cod not in codigos_existentes:
+                                codigo_map[f"{cod} - (Não encontrado na planilha)"] = (
+                                    cod
+                                )
 
-                    codigos_formatados = sorted(
-                        codigo_map,
-                        key=lambda x: sort_codigo(codigo_map[x]),
-                    )
+                        codigos_formatados = sorted(
+                            codigo_map,
+                            key=lambda x: sort_codigo(codigo_map[x]),
+                        )
 
-                    # Manter selecionados também os padrões ausentes no CSV atual.
-                    codigos_default_fmt = [
-                        c for c in codigos_formatados if codigo_map[c] in codigos_padrao
-                    ]
-                    with col1:
-                        with st.expander(
-                            "Códigos para calculo da D-266.6 - T. Salário"
-                        ):
+                        # Manter selecionados também os padrões ausentes no CSV atual.
+                        codigos_default_fmt = [
+                            c
+                            for c in codigos_formatados
+                            if codigo_map[c] in codigos_padrao
+                        ]
+                        with col1:
+                            with st.expander(
+                                "Códigos para calculo da D-266.6 - T. Salário"
+                            ):
 
-                            codigos_select_fmt = st.multiselect(
-                                "Selecione os códigos para **D-266.6 - T. Salário**",
-                                options=codigos_formatados,
-                                default=codigos_default_fmt,
-                            )
+                                codigos_select_fmt = st.multiselect(
+                                    "Selecione os códigos para **D-266.6 - T. Salário**",
+                                    options=codigos_formatados,
+                                    default=codigos_default_fmt,
+                                )
 
-                            codigos_selecionados = [
-                                codigo_map[x] for x in codigos_select_fmt
-                            ]
+                                codigos_selecionados = [
+                                    codigo_map[x] for x in codigos_select_fmt
+                                ]
 
-                            salvar_config("codigos_padrao", codigos_selecionados)
+                                salvar_config("codigos_padrao", codigos_selecionados)
 
-                        df_codigos_especiais = (
-                            df_final[
-                                (
-                                    (
-                                        df_final["codigo"]
-                                        .astype(str)
-                                        .isin(codigos_selecionados)
+                        for coluna, lista_default_codigos in COLUNAS_ESPECIAIS.items():
+
+                            # Converter defaults para o novo formato
+                            defaults_formatados = []
+                            for cod in lista_default_codigos:
+                                desc = mapa_codigos.get(str(cod), None)
+                                defaults_formatados.append(
+                                    f"{cod} - {desc if desc else '(Não encontrado na planilha)'}"
+                                )
+
+                            # Selecionar coluna visual
+                            if col_toggle:
+                                container = col1
+                            else:
+                                container = col2
+                            with container:
+                                with st.expander(f"Códigos para {coluna}"):
+                                    selecionados_formatados = st.multiselect(
+                                        f"Selecione os códigos para **{coluna}**:",
+                                        options=opcoes_formatadas,
+                                        default=defaults_formatados,
+                                        key=f"multi_{coluna}",
                                     )
-                                )
+
+                            # Converter de volta para códigos puros
+                            codigos_escolhidos[coluna] = [
+                                extrair_codigo(s) for s in selecionados_formatados
                             ]
-                            .groupby("filial", as_index=False)["valor_num"]
-                            .sum()
-                        )
 
-                        df_codigos_especiais.rename(
-                            columns={"valor_num": "total_codigos_especiais"},
-                            inplace=True,
-                        )
+                            col_toggle = not col_toggle
 
-                        df_soma = df_soma.merge(
-                            df_codigos_especiais,
-                            left_on="Nome da Filial",
-                            right_on="filial",
-                            how="left",
-                        ).drop(columns=["filial"])
-
-                        df_soma["total_codigos_especiais"] = df_soma[
-                            "total_codigos_especiais"
-                        ].fillna(0)
-
-                        df_soma["total_codigos_especiais_fmt"] = df_soma[
-                            "total_codigos_especiais"
-                        ].apply(
-                            lambda x: f"R${x:,.2f}".replace(",", "X")
-                            .replace(".", ",")
-                            .replace("X", ".")
-                        )
-
-                        df_soma["total_liquido"] = (
-                            df_soma["valor_num"] - df_soma["total_codigos_especiais"]
-                        )
-
-                        df_soma["total_liquido_fmt"] = df_soma["total_liquido"].apply(
-                            lambda x: f"R${x:,.2f}".replace(",", "X")
-                            .replace(".", ",")
-                            .replace("X", ".")
-                        )
-
-                        df_soma = df_soma.sort_values(
-                            by="Nome da Filial", key=lambda col: col.map(sort_buffon)
-                        )
-
-                    for coluna, lista_default_codigos in COLUNAS_ESPECIAIS.items():
-
-                        # Converter defaults para o novo formato
-                        defaults_formatados = []
-                        for cod in lista_default_codigos:
-                            desc = mapa_codigos.get(str(cod), None)
-                            defaults_formatados.append(
-                                f"{cod} - {desc if desc else '(Não encontrado na planilha)'}"
+                            COLUNAS_ESPECIAIS[coluna] = sorted(
+                                list(
+                                    set(
+                                        [
+                                            *codigos_escolhidos[coluna],
+                                            *[
+                                                cod
+                                                for cod in lista_default_codigos
+                                                if cod
+                                                not in df_final["codigo"]
+                                                .astype(str)
+                                                .values
+                                            ],
+                                        ]
+                                    )
+                                ),
+                                key=int,
                             )
 
-                        # Selecionar coluna visual
-                        if col_toggle:
-                            container = col1
-                        else:
-                            container = col2
-                        with container:
-                            with st.expander(f"Códigos para {coluna}"):
-                                selecionados_formatados = st.multiselect(
-                                    f"Selecione os códigos para **{coluna}**:",
-                                    options=opcoes_formatadas,
-                                    default=defaults_formatados,
-                                    key=f"multi_{coluna}",
-                                )
-
-                        # Converter de volta para códigos puros
-                        codigos_escolhidos[coluna] = [
-                            extrair_codigo(s) for s in selecionados_formatados
+                        ORDEM_COLUNAS_ESPECIAIS = [
+                            "C-270.4 - INSS",
+                            "C-147.3 - IRF rec.",
+                            "C-275.5 - V.T.",
+                            "C-297.6 - Farm.",
+                            "C-51.5 - Ad. Sal.",
+                            "C-51.5 - Desc. Ad. Sal.",
+                            "C-2267.5 - Conf. dívida",
+                            "C-142.2 - P.Alim.",
+                            "C-297.6 - Pl. Saúde",
+                            "C-146.5 - Sind. Rec.",
+                            "C-302.6 - Cest. Bas.",
+                            "D-54.0 - Sal. Fam.",
+                            "D-53.1 - Sal. Mat.",
+                            "D-52.3 - Ad 13° Sal.",
+                            "C-22667 - D-CAIXA (Desc. emp. Consig.)",
                         ]
 
-                        col_toggle = not col_toggle
+                        # Reordenar mantendo apenas colunas existentes
+                        COLUNAS_ESPECIAIS = {
+                            col: COLUNAS_ESPECIAIS[col]
+                            for col in ORDEM_COLUNAS_ESPECIAIS
+                            if col in COLUNAS_ESPECIAIS
+                        }
 
-                        COLUNAS_ESPECIAIS[coluna] = sorted(
-                            list(
-                                set(
-                                    [
-                                        *codigos_escolhidos[coluna],
-                                        *[
-                                            cod
-                                            for cod in lista_default_codigos
-                                            if cod
-                                            not in df_final["codigo"].astype(str).values
-                                        ],
-                                    ]
-                                )
-                            ),
-                            key=int,
-                        )
+                        salvar_config("COLUNAS_ESPECIAIS", COLUNAS_ESPECIAIS)
 
-                    ORDEM_COLUNAS_ESPECIAIS = [
-                        "C-270.4 - INSS",
-                        "C-147.3 - IRF rec.",
-                        "C-275.5 - V.T.",
-                        "C-297.6 - Farm.",
-                        "C-51.5 - Ad. Sal.",
-                        "C-51.5 - Desc. Ad. Sal.",
-                        "C-2267.5 - Conf. dívida",
-                        "C-142.2 - P.Alim.",
-                        "C-297.6 - Pl. Saúde",
-                        "C-146.5 - Sind. Rec.",
-                        "C-302.6 - Cest. Bas.",
-                        "D-54.0 - Sal. Fam.",
-                        "D-53.1 - Sal. Mat.",
-                        "D-52.3 - Ad 13° Sal.",
-                        "C-22667 - D-CAIXA (Desc. emp. Consig.)",
+                df_codigos_especiais = (
+                    df_final[
+                        ((df_final["codigo"].astype(str).isin(codigos_selecionados)))
                     ]
+                    .groupby("filial", as_index=False)["valor_num"]
+                    .sum()
+                )
 
-                    # Reordenar mantendo apenas colunas existentes
-                    COLUNAS_ESPECIAIS = {
-                        col: COLUNAS_ESPECIAIS[col]
-                        for col in ORDEM_COLUNAS_ESPECIAIS
-                        if col in COLUNAS_ESPECIAIS
-                    }
+                df_codigos_especiais.rename(
+                    columns={"valor_num": "total_codigos_especiais"},
+                    inplace=True,
+                )
 
-                    salvar_config("COLUNAS_ESPECIAIS", COLUNAS_ESPECIAIS)
+                df_soma = df_soma.merge(
+                    df_codigos_especiais,
+                    left_on="Nome da Filial",
+                    right_on="filial",
+                    how="left",
+                ).drop(columns=["filial"])
+
+                df_soma["total_codigos_especiais"] = df_soma[
+                    "total_codigos_especiais"
+                ].fillna(0)
+
+                df_soma["total_codigos_especiais_fmt"] = df_soma[
+                    "total_codigos_especiais"
+                ].apply(
+                    lambda x: f"R${x:,.2f}".replace(",", "X")
+                    .replace(".", ",")
+                    .replace("X", ".")
+                )
+
+                df_soma["total_liquido"] = (
+                    df_soma["valor_num"] - df_soma["total_codigos_especiais"]
+                )
+
+                df_soma["total_liquido_fmt"] = df_soma["total_liquido"].apply(
+                    lambda x: f"R${x:,.2f}".replace(",", "X")
+                    .replace(".", ",")
+                    .replace("X", ".")
+                )
+
+                df_soma = df_soma.sort_values(
+                    by="Nome da Filial", key=lambda col: col.map(sort_buffon)
+                )
 
                 # ==========================================================
                 # FUNÇÃO PARA SOMAR CÓDIGOS POR FILIAL
@@ -1828,7 +1843,11 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
 
                 # Filtrar valores
                 df_prolabore = (
-                    df_final[df_final["codigo"] == 17]
+                    df_final[
+                        df_final["codigo"]
+                        .astype(str)
+                        .isin(config_pdf["prolabore"] if fonte_pdf else ["17"])
+                    ]
                     .groupby("filial")["valor_num"]
                     .sum()
                     .reset_index()
@@ -1836,7 +1855,11 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 df_prolabore.rename(columns={"valor_num": "prolabore"}, inplace=True)
 
                 df_inss = (
-                    df_final[df_final["codigo"] == 940]
+                    df_final[
+                        df_final["codigo"]
+                        .astype(str)
+                        .isin(config_pdf["inss_prolabore"] if fonte_pdf else ["940"])
+                    ]
                     .groupby("filial")["valor_num"]
                     .sum()
                     .reset_index()
