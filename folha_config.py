@@ -8,7 +8,7 @@ COLUNAS_PDF = [
     "C-297.6 - Farm.", "C-51.5 - Ad. Sal.", "C-51.5 - Desc. Ad. Sal.",
     "C-2267.5 - Conf. dívida", "C-142.2 - P.Alim.", "C-297.6 - Pl. Saúde",
     "C-146.5 - Sind. Rec.", "C-302.6 - Cest. Bas.", "D-54.0 - Sal. Fam.",
-    "D-53.1 - Sal. Mat.", "D-52.3 - Ad 13° Sal.",
+    "D-53.1 - Sal. Mat.",
     "C-22667 - D-CAIXA (Desc. emp. Consig.)",
 ]
 

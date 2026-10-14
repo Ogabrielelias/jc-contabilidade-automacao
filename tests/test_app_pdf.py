@@ -32,7 +32,7 @@ class AppPdfTest(unittest.TestCase):
         self.assertFalse(app.exception)
         self.assertNotIn("test_export", app.session_state)
         self.assertEqual(app.tabs[0].label, "Resumo Salários")
-        self.assertEqual(len(app.tabs[0].multiselect), 19)
+        self.assertEqual(len(app.tabs[0].multiselect), 18)
         app.multiselect(key="pdf_v1_salario").set_value(["00050001"])
         app.multiselect(key=f"pdf_v1_{COLUNAS_PDF[0]}").set_value(["00063101"])
         app.button[0].click().run()
@@ -43,6 +43,7 @@ class AppPdfTest(unittest.TestCase):
         self.assertEqual(list(banco), [CHAVE_CONFIG_PDF])
         self.assertEqual(banco[CHAVE_CONFIG_PDF]["codigos_padrao"], ["00050001"])
         resumo = next(t.value for t in app.dataframe if "C-270.4 - INSS" in t.value.columns)
+        self.assertFalse(any("Ad 13" in str(col) for col in resumo.columns))
         self.assertIn("171.255,81", str(resumo.loc["Matriz", "D-266.6 - T. salário"]))
         self.assertIn("16.274,73", str(resumo.loc["Matriz", "C-270.4 - INSS"]))
         self.assertEqual(int(resumo.loc["Filial 25", "Func."]), 51)
@@ -50,6 +51,10 @@ class AppPdfTest(unittest.TestCase):
         workbook = openpyxl.load_workbook(io.BytesIO(app.session_state["test_export"]))
         self.assertIn("Resumo Salários", workbook.sheetnames)
         self.assertIn("FGTS e Honorários", workbook.sheetnames)
+        self.assertFalse(any(
+            "Ad 13" in str(cell.value)
+            for row in workbook["Resumo Salários"] for cell in row
+        ))
         app.run()
         self.assertEqual(app.multiselect(key="pdf_v1_salario").value, ["00050001"])
         self.assertFalse(app.error)

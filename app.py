@@ -1265,7 +1265,6 @@ if "df_final" in locals():
                                 "20110",
                             ],
                             "C-302.6 - Cest. Bas.": ["258", "20080"],
-                            "D-52.3 - Ad 13° Sal.": ["169", "170", "171", "173"],
                             "C-51.5 - Desc. Ad. Sal.": ["44"],
                             "C-2267.5 - Conf. dívida": ["3600"],
                             "C-22667 - D-CAIXA (Desc. emp. Consig.)": ["20086"],
@@ -1297,6 +1296,8 @@ if "df_final" in locals():
                 # ==========================================================
                 # 🔹 Construir opções no formato "codigo - descricao"
                 # ==========================================================
+
+                COLUNAS_ESPECIAIS.pop("D-52.3 - Ad 13° Sal.", None)
 
                 # Criar dicionário: código → descrição
                 mapa_codigos = (
@@ -1479,7 +1480,6 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                             "C-302.6 - Cest. Bas.",
                             "D-54.0 - Sal. Fam.",
                             "D-53.1 - Sal. Mat.",
-                            "D-52.3 - Ad 13° Sal.",
                             "C-22667 - D-CAIXA (Desc. emp. Consig.)",
                         ]
 
@@ -1606,8 +1606,10 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 # ==========================================================
 
                 colunas_fmt = [c + "_fmt" for c in [*COLUNAS_ESPECIAIS.keys()][0:11]]
-                colunas_fmt_2 = [c + "_fmt" for c in [*COLUNAS_ESPECIAIS.keys()][11:14]]
-                colunas_fmt_3 = [c + "_fmt" for c in [*COLUNAS_ESPECIAIS.keys()][14:]]
+                colunas_salario_a_pagar = ["D-54.0 - Sal. Fam.", "D-53.1 - Sal. Mat."]
+                col_dcaixa = "C-22667 - D-CAIXA (Desc. emp. Consig.)"
+                colunas_fmt_2 = [c + "_fmt" for c in colunas_salario_a_pagar]
+                colunas_fmt_3 = [col_dcaixa + "_fmt"]
 
                 # Lista das colunas especiais já existentes em df_soma
                 colunas_calc_sub_t = list(COLUNAS_ESPECIAIS.keys())[0:11]
@@ -1645,9 +1647,6 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 # NOVA COLUNA: C-152.0 - Sal. a pagar
                 # ==========================================================
 
-                # Colunas especiais que devem ser subtraídas
-                colunas_salario_a_pagar = list(COLUNAS_ESPECIAIS.keys())[11:14]
-
                 # Converter essas colunas para número (se ainda não tiverem)
                 for col in colunas_salario_a_pagar:
                     df_soma[col + "_num"] = (
@@ -1658,7 +1657,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         .astype(float)
                     )
 
-                # Calcular soma das três colunas
+                # Somar salário-família e salário-maternidade
                 df_soma["soma_especiais_sal_pagar"] = df_soma[
                     [c + "_num" for c in colunas_salario_a_pagar]
                 ].sum(axis=1)
@@ -1677,8 +1676,6 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                 # NOVA COLUNA: RESULTADO
                 # resultado = (C-152.0 - Sal. a pagar) - (C-22667 - D-CAIXA ...)
                 # ==========================================================
-
-                col_dcaixa = list(COLUNAS_ESPECIAIS.keys())[14]
 
                 # Converter a coluna D-CAIXA para número
                 df_soma[col_dcaixa + "_num"] = (

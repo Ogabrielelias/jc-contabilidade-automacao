@@ -22,7 +22,7 @@ class ConfigPdfTest(unittest.TestCase):
         self.assertEqual(config["colunas_especiais"]["C-270.4 - INSS"], ["00063101"])
         self.assertEqual(config["colunas_especiais"]["D-53.1 - Sal. Mat."],
                          ["00000040", "00000043", "00000044", "00000045", "00000046", "00000048"])
-        self.assertEqual(config["colunas_especiais"]["D-52.3 - Ad 13° Sal."], [])
+        self.assertNotIn("D-52.3 - Ad 13° Sal.", config["colunas_especiais"])
         config["codigos_padrao"].append("00000001")
         self.assertEqual(config_pdf_inicial()["codigos_padrao"], [])
 
@@ -30,6 +30,12 @@ class ConfigPdfTest(unittest.TestCase):
         config = normalizar_config_pdf({"colunas_especiais": {"C-270.4 - INSS": []}})
         self.assertEqual(config["colunas_especiais"]["C-270.4 - INSS"], [])
         self.assertEqual(config["colunas_especiais"]["C-147.3 - IRF rec."], ["00064101"])
+
+    def test_ignora_coluna_ad_13_sal_salva_anteriormente(self):
+        config = normalizar_config_pdf({
+            "colunas_especiais": {"D-52.3 - Ad 13° Sal.": ["169"]},
+        })
+        self.assertNotIn("D-52.3 - Ad 13° Sal.", config["colunas_especiais"])
 
     def test_rejeita_codigo_invalido(self):
         for codigo in ("1.0", "ABC", "123456789", "-1"):

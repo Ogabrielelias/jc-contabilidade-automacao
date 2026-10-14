@@ -132,7 +132,7 @@ com `chave = folha_pdf_v1` e `valor` contendo:
 - `versao` e `configurado`;
 - `excluir_proventos`: vencimentos retirados dos lancamentos de todos os calculos;
 - `codigos_padrao`: eventos deduzidos do total de vencimentos para formar T. salario;
-- `colunas_especiais`: listas de eventos das 15 colunas contabeis, em ordem fixa;
+- `colunas_especiais`: listas de eventos das 14 colunas contabeis, em ordem fixa;
 - `prolabore` e `inss_prolabore`: eventos utilizados no resumo de pro-labore.
 
 Os codigos do PDF sao strings de oito digitos. O formulario mostra codigo, descricao
@@ -201,16 +201,15 @@ C-152.0 - Sub. T. = D-266.6 - T. salario
                     - soma(primeiras 11 colunas especiais)
 ```
 
-As tres colunas especiais seguintes sao adicionadas ao subtotal para formar o salario a pagar:
+Salario-familia e salario-maternidade sao adicionados ao subtotal para formar o salario a pagar:
 
 ```text
 C-152.0 - Sal. a pagar = C-152.0 - Sub. T.
                          + D-54.0 - Sal. Fam.
                          + D-53.1 - Sal. Mat.
-                         + D-52.3 - Ad 13o Sal.
 ```
 
-O resultado final desconta a coluna de D-CAIXA, que e a 15a coluna especial:
+O resultado final desconta a coluna de D-CAIXA:
 
 ```text
 Resultado = C-152.0 - Sal. a pagar
