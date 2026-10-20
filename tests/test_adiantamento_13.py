@@ -21,7 +21,7 @@ class Adiantamento13Test(unittest.TestCase):
             doc.new_page().insert_text((30, 30), texto)
             return doc.tobytes()
 
-    def test_outro_relatorio_preserva_fluxo_antigo(self):
+    def test_outro_relatorio_nao_e_identificado_como_adiantamento(self):
         self.assertIsNone(extrair_adiantamento_13(self.pdf("Provisao de salario")))
 
     def test_resumo_incompleto_nao_vira_zero(self):

@@ -32,6 +32,13 @@ class Query:
 
 
 def uploader(*args, **kwargs):
+    if kwargs.get("key") == "pdf_prov" and st.session_state.get("test_pdf_13_invalido"):
+        import fitz
+        with fitz.open() as doc:
+            doc.new_page().insert_text((30, 30), "Provisao de 13 salario - modelo antigo")
+            arquivo = io.BytesIO(doc.tobytes())
+        arquivo.name = "provisao_09_2026.pdf"
+        return arquivo
     if kwargs.get("key") == "pdf_prov" and st.session_state.get("test_adiantamento"):
         path = root / "Buffon adiantamento 13° salário 09 2026.pdf"
         arquivo = io.BytesIO(path.read_bytes())

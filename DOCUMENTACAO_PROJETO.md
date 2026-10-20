@@ -345,7 +345,7 @@ streamlit run app.py --server.port=8080 --server.address=0.0.0.0
 
 ### Adiantamento de 13o salario
 
-- A entrada de PDF de 13o aceita a provisao antiga ou o adiantamento no novo formato Buffon.
+- A entrada opcional de PDF de 13o aceita somente o adiantamento no novo formato Buffon por estabelecimento. PDFs de provisao antigos e outros relatorios sao rejeitados.
 - `folha_adiantamento_13.py` identifica o adiantamento pelo evento `00030001` e extrai `Liquido` e `Vlr. FGTS` dos resumos por estabelecimento. O total da empresa nao entra como filial.
 - A exportacao adiciona a aba `Ad 13 Sal e FGTS`, com o titulo `Com Buffon / Ad 13 sal / FGTS - MM/AAAA`, competencia lida do periodo dentro do PDF, e colunas `Ad 13 Sal.` e `Fgts s/ 13 sal.`.
 - A aba segue o padrao visual das demais: nome da empresa na primeira linha, titulo e competencia na segunda, ambos alinhados a esquerda, valores a direita, larguras automaticas e linha `TOTAL GERAL` em negrito ao final.

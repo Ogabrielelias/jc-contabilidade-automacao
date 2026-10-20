@@ -13,6 +13,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @unittest.skipUnless((ROOT / "Buffon Folha de salário 09 2026.pdf").exists(), "PDF de exemplo ausente")
 class AppPdfTest(unittest.TestCase):
+    def test_entrada_13_rejeita_modelo_antigo(self):
+        app = self.iniciar()
+        app.session_state["test_pdf_13_invalido"] = True
+        app.run()
+        self.assertFalse(app.exception)
+        self.assertTrue(app.error)
+        self.assertIn("O modelo antigo de provisão não é aceito", app.error[0].value)
+        self.assertNotIn("test_export", app.session_state)
+
     def test_adiantamento_sozinho_e_com_folha(self):
         app = self.iniciar()
         app.session_state["test_adiantamento"] = True
