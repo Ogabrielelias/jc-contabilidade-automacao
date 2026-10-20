@@ -13,6 +13,12 @@ from folha_pdf import extrair_resumos_pdf
 from folha_detalhes_ui import carregar_detalhes
 from folha_config import CHAVE_CONFIG_PDF, config_pdf_inicial, dataframe_lancamentos_pdf
 from folha_config_ui import configurar_pdf
+from folha_codigos_excel import escrever_codigos_calculos
+from folha_adiantamento_13 import (
+    extrair_adiantamento_13, tabela_adiantamento_13, escrever_adiantamento_13,
+)
+
+dados_adiantamento_13 = None
 
 SUPABASE_URL = st.secrets["supabase_url"]
 SUPABASE_KEY = st.secrets["supabase_key"]
@@ -595,10 +601,11 @@ with st.container(border=True):
 
     with coluna_provisao:
         st.write(
-            "Envie o **PDF de provisão de 13º salário**, opcional, para incluir os saldos e movimentos de cada filial."
+            "Envie o **PDF de provisão ou adiantamento de 13º salário**, opcional. "
+            "O adiantamento inclui uma tabela com o líquido e o FGTS de cada filial."
         )
         pdf_provento_file = st.file_uploader(
-            "PDF de provisão de 13º salário (opcional)", type=["pdf"], key="pdf_prov"
+            "PDF de provisão ou adiantamento de 13º salário (opcional)", type=["pdf"], key="pdf_prov"
         )
 
     if pdf_quebra_file:
@@ -826,13 +833,15 @@ with st.container(border=True):
 
     if pdf_provento_file:
         try:
-            tabelas_filiais = extrair_tabelas_por_filial(pdf_provento_file)
-            df_13_proventos = consolidar_provisoes(tabelas_filiais)
-            df_13_proventos.set_index("Filial", inplace=True)
+            dados_adiantamento_13 = extrair_adiantamento_13(pdf_provento_file.getvalue())
+            if dados_adiantamento_13 is None:
+                tabelas_filiais = extrair_tabelas_por_filial(pdf_provento_file)
+                df_13_proventos = consolidar_provisoes(tabelas_filiais)
+                df_13_proventos.set_index("Filial", inplace=True)
         except Exception as e:
             st.error(
                 "O arquivo enviado não corresponde ao padrão esperado."
-                "Certifique-se de utilizar o PDF de provisão de 13° salário ou contate o suporte."
+                "Certifique-se de utilizar o PDF de provisão ou adiantamento de 13° salário ou contate o suporte."
             )
             print(f"[ERRO] {e}")
             st.stop()
@@ -855,7 +864,7 @@ if fonte_pdf and pdf_file:
                         "Resumo Salários",
                         "Resumo FGTS",
                         "Resumo prolabore",
-                        "Provisão 13° salário",
+                        "Adiantamento 13° salário" if dados_adiantamento_13 else "Provisão 13° salário",
                         "Dados Extraídos",
                     ]
                 )
@@ -879,12 +888,16 @@ if fonte_pdf and pdf_file:
                         competencia_provisao = re.search(
                             r"(\d{1,2})\s+(20\d{2})", pdf_provento_file.name
                         )
+                        if dados_adiantamento_13:
+                            competencia_provisao = re.search(
+                                r"(\d{2})/(20\d{2})", dados_adiantamento_13["competencia"]
+                            )
                         if competencia_provisao and (
                             competencia_provisao[1].zfill(2),
                             competencia_provisao[2],
                         ) != (ss["csv_mes"], ss["csv_ano"]):
                             st.warning(
-                                "A competência do PDF de provisão de 13º difere da folha de salários."
+                                "A competência do PDF de 13º difere da folha de salários."
                             )
                     if config_pdf["configurado"]:
                         df_final = dataframe_lancamentos_pdf(
@@ -902,7 +915,24 @@ if fonte_pdf and pdf_file:
         st.error(f"Não foi possível preparar a folha PDF: {erro}")
 
 
-if "df_final" not in locals() and pdf_provento_file:
+if "df_final" not in locals() and dados_adiantamento_13:
+    with st.container(border=True):
+        st.subheader("Adiantamento 13° salário")
+        st.write(tabela_adiantamento_13(dados_adiantamento_13))
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            escrever_adiantamento_13(writer, dados_adiantamento_13)
+        st.download_button(
+            label=":material/download: Baixar resultado geral",
+            data=output.getvalue(),
+            file_name="resumo_adiantamento_13_buffon_"
+            + dados_adiantamento_13["competencia"].replace("/", "-") + ".xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
+        )
+
+
+if "df_final" not in locals() and pdf_provento_file and not dados_adiantamento_13:
     with st.container(border=True):
         res_cols = st.columns([0.8, 0.2], vertical_alignment="bottom")
 
@@ -1005,6 +1035,9 @@ if "df_final" not in locals() and pdf_provento_file:
 
                 nome_arquivo = f"resumo_provisao_13_salario_buffon_{mes_ano_excel}.xlsx"
 
+                for aba_excel in workbook.worksheets():
+                    aba_excel.autofit()
+
             with res_cols[1]:
                 xlsx_data = output.getvalue()
                 # Botão de download
@@ -1036,7 +1069,7 @@ if "df_final" in locals():
                         "Resumo Salários",
                         "Resumo FGTS",
                         "Resumo prolabore",
-                        "Provisão 13° salário",
+                        "Adiantamento 13° salário" if dados_adiantamento_13 else "Provisão 13° salário",
                         "Dados Extraídos",
                     ]
                 )
@@ -1156,9 +1189,13 @@ if "df_final" in locals():
                 st.dataframe(df_filtrado, width="stretch")
 
             with tabs[3]:
-                st.subheader("Provisão 13° salário")
+                st.subheader("Adiantamento 13° salário" if dados_adiantamento_13 else "Provisão 13° salário")
                 st.write("")
-                if (
+                if dados_adiantamento_13:
+                    st.write(tabela_adiantamento_13(
+                        dados_adiantamento_13, df_final["filial"].unique()
+                    ))
+                elif (
                     "df_13_proventos" in locals()
                     and df_13_proventos is not None
                     and not df_13_proventos.empty
@@ -2419,6 +2456,19 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                     )
 
                     worksheet_13.set_row(last_row_13 + 3, None, fmt_total)
+                if dados_adiantamento_13:
+                    escrever_adiantamento_13(
+                        writer, dados_adiantamento_13, df_final["filial"].unique()
+                    )
+                escrever_codigos_calculos(
+                    workbook, df_final, codigos_selecionados, COLUNAS_ESPECIAIS,
+                    config_pdf["prolabore"] if fonte_pdf else ["17"],
+                    config_pdf["inss_prolabore"] if fonte_pdf else ["940"],
+                    mes_ano_excel, format_title, format_sub, fmt_num,
+                )
+                for aba_excel in workbook.worksheets():
+                    aba_excel.autofit()
+
             # Gerar bytes
             xlsx_data = output.getvalue()
 

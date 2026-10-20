@@ -32,8 +32,15 @@ class Query:
 
 
 def uploader(*args, **kwargs):
+    if kwargs.get("key") == "pdf_prov" and st.session_state.get("test_adiantamento"):
+        path = root / "Buffon adiantamento 13° salário 09 2026.pdf"
+        arquivo = io.BytesIO(path.read_bytes())
+        arquivo.name = "adiantamento.pdf"
+        return arquivo
     if kwargs.get("key") == "pdf_funcionarios":
-        path = next(root.glob("Buffon*.pdf"))
+        if st.session_state.get("test_somente_adiantamento"):
+            return None
+        path = root / "Buffon Folha de salário 09 2026.pdf"
         arquivo = io.BytesIO(path.read_bytes())
         arquivo.name = path.name
         return arquivo

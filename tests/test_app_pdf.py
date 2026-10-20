@@ -13,6 +13,35 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @unittest.skipUnless((ROOT / "Buffon Folha de salário 09 2026.pdf").exists(), "PDF de exemplo ausente")
 class AppPdfTest(unittest.TestCase):
+    def test_adiantamento_sozinho_e_com_folha(self):
+        app = self.iniciar()
+        app.session_state["test_adiantamento"] = True
+        app.session_state["test_somente_adiantamento"] = True
+        app.run()
+        self.assertFalse(app.exception)
+        self.assertFalse(app.error)
+        workbook = openpyxl.load_workbook(io.BytesIO(app.session_state["test_export"]))
+        self.assertEqual(workbook.sheetnames, ["Ad 13 Sal e FGTS"])
+        self.assertEqual(
+            app.session_state["test_export_name"],
+            "resumo_adiantamento_13_buffon_09-2026.xlsx",
+        )
+        app.session_state["test_somente_adiantamento"] = False
+        app.run()
+        app.button[0].click().run()
+        self.assertFalse(app.exception)
+        self.assertFalse(app.error)
+        workbook = openpyxl.load_workbook(io.BytesIO(app.session_state["test_export"]))
+        self.assertIn("Resumo Salários", workbook.sheetnames)
+        self.assertIn("Ad 13 Sal e FGTS", workbook.sheetnames)
+        aba = workbook["Ad 13 Sal e FGTS"]
+        valores = {r[0]: r[1:3] for r in list(aba.values)[4:]}
+        self.assertEqual(valores["F05"], (7117.99, 569.42))
+        self.assertNotIn("Mtz", valores)
+        self.assertEqual(valores["F116"], (2766.07, 221.28))
+        self.assertEqual(len(valores), 16)
+        self.assertEqual(valores["TOTAL GERAL"], (32269.45, 2581.47))
+
     def iniciar(self, config=None):
         # Diretório controlado pelo teste evita problemas do sandbox com TEMP do Windows.
         pasta = ROOT / "tmp" / "streamlit_tests"
@@ -32,7 +61,7 @@ class AppPdfTest(unittest.TestCase):
         self.assertFalse(app.exception)
         self.assertNotIn("test_export", app.session_state)
         self.assertEqual(app.tabs[0].label, "Resumo Salários")
-        self.assertEqual(len(app.tabs[0].multiselect), 18)
+        self.assertEqual(len(app.tabs[0].multiselect), 17)
         app.multiselect(key="pdf_v1_salario").set_value(["00050001"])
         app.multiselect(key=f"pdf_v1_{COLUNAS_PDF[0]}").set_value(["00063101"])
         app.button[0].click().run()
@@ -51,6 +80,22 @@ class AppPdfTest(unittest.TestCase):
         workbook = openpyxl.load_workbook(io.BytesIO(app.session_state["test_export"]))
         self.assertIn("Resumo Salários", workbook.sheetnames)
         self.assertIn("FGTS e Honorários", workbook.sheetnames)
+        aba_codigos = workbook["Códigos dos Cálculos"]
+        self.assertEqual(aba_codigos["A1"].value, workbook["Resumo Salários"]["A1"].value)
+        self.assertIn("09/2026", aba_codigos["A2"].value)
+        auditoria = list(aba_codigos.values)[2:]
+        coluna_salario = auditoria[0].index("D-266.6")
+        coluna_inss = auditoria[0].index("C-270.4")
+        self.assertTrue(any(
+            str(row[coluna_salario]).startswith("00050001 - ")
+            for row in auditoria[2:]
+        ))
+        self.assertTrue(any(
+            str(row[coluna_inss]).startswith("00063101 - ")
+            for row in auditoria[2:]
+        ))
+        self.assertEqual(len(auditoria[0]), len(COLUNAS_PDF) + 3)
+        self.assertIsNone(auditoria[3][coluna_salario])
         self.assertFalse(any(
             "Ad 13" in str(cell.value)
             for row in workbook["Resumo Salários"] for cell in row

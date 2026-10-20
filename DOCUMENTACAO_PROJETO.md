@@ -130,7 +130,6 @@ Para o novo PDF, todos os grupos ficam em uma linha independente da mesma tabela
 com `chave = folha_pdf_v1` e `valor` contendo:
 
 - `versao` e `configurado`;
-- `excluir_proventos`: vencimentos retirados dos lancamentos de todos os calculos;
 - `codigos_padrao`: eventos deduzidos do total de vencimentos para formar T. salario;
 - `colunas_especiais`: listas de eventos das 14 colunas contabeis, em ordem fixa;
 - `prolabore` e `inss_prolabore`: eventos utilizados no resumo de pro-labore.
@@ -138,33 +137,26 @@ com `chave = folha_pdf_v1` e `valor` contendo:
 Os codigos do PDF sao strings de oito digitos. O formulario mostra codigo, descricao
 e tipo; permite digitar codigos de meses futuros e remover codigos ausentes no PDF
 atual. Os grupos contabeis possuem os padroes informados pelo usuario em
-`CODIGOS_PADRAO_PDF` (`folha_config.py`). Adiantamento de 13o, exclusoes,
-deducoes para T. salario continuam sem padroes presumidos.
+`CODIGOS_PADRAO_PDF` (`folha_config.py`). As deducoes para T. salario continuam
+sem padroes presumidos.
 Pro-labore usa por padrao `00001501` e seu INSS usa `00063401`, ambos editaveis.
 Listas salvas explicitamente vazias sao respeitadas, sem repor codigos removidos.
 O calculo inicia apos salvar a primeira configuracao. Falhas de gravacao sao exibidas
 e nao substituem a configuracao anterior.
 A configuracao do novo PDF nao altera `codigos_padrao` nem `COLUNAS_ESPECIAIS` do CSV.
 
-### 5.1 Vencimentos excluidos e deducoes do salario
+### 5.1 Deducoes do salario
 
-No novo PDF, a secao `Codigos de vencimentos excluidos` controla a lista
-`excluir_proventos`. Ela inicia vazia e pode ser editada e salva pelo usuario.
-Nao ha conversao automatica da lista fixa de codigos do CSV antigo.
+Todos os vencimentos das unidades do novo PDF entram nos lancamentos.
+A configuracao `excluir_proventos` foi removida; valores antigos salvos sao
+ignorados e deixam de constar na configuracao ao salvar novamente.
+Eventos de base e o consolidado da empresa continuam fora dos lancamentos.
 
-A exclusao ocorre durante a conversao dos eventos PDF em lancamentos, antes dos
-calculos. Um evento selecionado e removido apenas se seu tipo for `Vencimento`.
-Seu valor deixa de entrar no resumo de salarios, nos grupos contabeis e no
-pro-labore, e sua linha nao aparece na aba `Dados Extraidos`. Os descontos nao
-sao removidos por essa lista. A exclusao nao altera o PDF nem os totais de FGTS
-e contratos lidos diretamente do documento.
-
-Ja os `Codigos para calculo da D-266.6 - T. Salario` (`codigos_padrao`) deduzem
+Os `Codigos para calculo da D-266.6 - T. Salario` (`codigos_padrao`) deduzem
 os eventos selecionados do total de vencimentos para formar T. salario. Esses
 eventos continuam disponiveis nos lancamentos e podem compor outros grupos.
 
-Por exemplo, colocar `00001501` em `excluir_proventos` retira o vencimento de
-pro-labore tambem do resumo de pro-labore. Coloca-lo apenas em `codigos_padrao`
+Por exemplo, colocar `00001501` em `codigos_padrao`
 deduz seu valor na formacao de T. salario, mantendo-o disponivel para o grupo
 de pro-labore. Este exemplo descreve o efeito dos campos, sem alterar suas listas.
 
@@ -350,6 +342,17 @@ streamlit run app.py --server.port=8080 --server.address=0.0.0.0
 ```
 
 ## 14. Limitacoes e cuidados do comportamento atual
+
+### Adiantamento de 13o salario
+
+- A entrada de PDF de 13o aceita a provisao antiga ou o adiantamento no novo formato Buffon.
+- `folha_adiantamento_13.py` identifica o adiantamento pelo evento `00030001` e extrai `Liquido` e `Vlr. FGTS` dos resumos por estabelecimento. O total da empresa nao entra como filial.
+- A exportacao adiciona a aba `Ad 13 Sal e FGTS`, com o titulo `Com Buffon / Ad 13 sal / FGTS - MM/AAAA`, competencia lida do periodo dentro do PDF, e colunas `Ad 13 Sal.` e `Fgts s/ 13 sal.`.
+- A aba segue o padrao visual das demais: nome da empresa na primeira linha, titulo e competencia na segunda, ambos alinhados a esquerda, valores a direita, larguras automaticas e linha `TOTAL GERAL` em negrito ao final.
+- Mantem a correspondencia existente: Buffon 01 = Mtz; Buffon 02 = F01; Buffon 06 = F05. A tabela na tela e no Excel mostra somente unidades com valor diferente de zero em pelo menos uma das colunas; unidades com ambas vazias ou zeradas sao omitidas.
+- O adiantamento pode ser exportado sozinho ou junto das demais abas da folha. Valores ausentes em um resumo identificado impedem a exportacao para evitar totais incompletos.
+
+### Cuidados gerais
 
 - Os parsers dependem dos textos e formatos dos relatorios originais. Mudancas no layout dos PDFs ou do CSV podem impedir a extracao.
 - Mes e ano sao inferidos principalmente pelo nome dos arquivos, nao pelo conteudo dos relatorios.

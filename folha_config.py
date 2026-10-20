@@ -39,7 +39,7 @@ CODIGOS_PADRAO_PDF = {
 def config_pdf_inicial():
     return {
         "versao": 1, "configurado": False,
-        "excluir_proventos": [], "codigos_padrao": [],
+        "codigos_padrao": [],
         "prolabore": ["00001501"], "inss_prolabore": ["00063401"],
         "colunas_especiais": {
             coluna: [str(codigo).zfill(8) for codigo in CODIGOS_PADRAO_PDF.get(coluna, [])]
@@ -65,7 +65,7 @@ def normalizar_config_pdf(config):
             saida.append(codigo.zfill(8))
         return sorted(set(saida))
 
-    for chave in ("excluir_proventos", "codigos_padrao", "prolabore", "inss_prolabore"):
+    for chave in ("codigos_padrao", "prolabore", "inss_prolabore"):
         resultado[chave] = codigos(config.get(chave, resultado[chave]))
     for coluna in COLUNAS_PDF:
         resultado["colunas_especiais"][coluna] = codigos(
@@ -79,9 +79,6 @@ def dataframe_lancamentos_pdf(dados, config):
     linhas = []
     for evento in dados["eventos"]:
         if evento["Unidade"] == "Total da empresa" or evento["Tipo"] == "Base":
-            continue
-        # Exclusões retiram somente vencimentos; descontos homônimos permanecem.
-        if evento["Tipo"] == "Vencimento" and evento["Código"] in config["excluir_proventos"]:
             continue
         valor = float(evento["Valor"].replace(".", "").replace(",", "."))
         linhas.append({

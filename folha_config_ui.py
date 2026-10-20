@@ -56,12 +56,6 @@ def configurar_pdf(dados, config, salvar):
                             coluna,
                         )
             with col1:
-                with st.expander("Códigos de vencimentos excluídos"):
-                    nova["excluir_proventos"] = escolher(
-                        "Vencimentos excluídos de todos os cálculos",
-                        config["excluir_proventos"],
-                        "excluir",
-                    )
                 with st.expander("Códigos para pró-labore"):
                     nova["prolabore"] = escolher(
                         "Eventos de pró-labore", config["prolabore"], "prolabore"

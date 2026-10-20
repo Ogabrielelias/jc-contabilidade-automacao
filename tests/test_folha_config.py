@@ -42,7 +42,7 @@ class ConfigPdfTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 normalizar_config_pdf({"prolabore": [codigo]})
 
-    def test_adaptacao_exclui_bases_totais_e_vencimentos_configurados(self):
+    def test_adaptacao_exclui_bases_totais_e_ignora_exclusoes_antigas(self):
         def evento(tipo, codigo, unidade="Matriz"):
             return {"Tipo": tipo, "Código": codigo, "Descrição": "Evento",
                     "Unidade": unidade, "Valor": "1.234,56"}
@@ -56,4 +56,5 @@ class ConfigPdfTest(unittest.TestCase):
         self.assertEqual(df["valor_num"].tolist(), [1234.56, 1234.56])
         config["excluir_proventos"] = ["00000001"]
         df = dataframe_lancamentos_pdf(dados, config)
-        self.assertEqual(df["codigo"].tolist(), ["00063101"])
+        self.assertEqual(df["codigo"].tolist(), ["00000001", "00063101"])
+        self.assertNotIn("excluir_proventos", normalizar_config_pdf(config))
