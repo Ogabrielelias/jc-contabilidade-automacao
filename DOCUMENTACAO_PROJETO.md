@@ -347,12 +347,45 @@ streamlit run app.py --server.port=8080 --server.address=0.0.0.0
 
 - A entrada opcional de PDF de 13o aceita somente o adiantamento no novo formato Buffon por estabelecimento. PDFs de provisao antigos e outros relatorios sao rejeitados.
 - `folha_adiantamento_13.py` identifica o adiantamento pelo evento `00030001` e extrai `Liquido` e `Vlr. FGTS` dos resumos por estabelecimento. O total da empresa nao entra como filial.
-- A exportacao adiciona a aba `Ad 13 Sal e FGTS`, com o titulo `Com Buffon / Ad 13 sal / FGTS - MM/AAAA`, competencia lida do periodo dentro do PDF, e colunas `Ad 13 Sal.` e `Fgts s/ 13 sal.`.
+- A exportacao adiciona a aba `Ad 13 Sal e FGTS`, com o titulo `Com Buffon / Ad 13 sal / FGTS - MM/AAAA` e competencia lida do periodo dentro do PDF. Os cabecalhos usam duas linhas: `D-52.3 ad 13 sal` / `C-2478.3 13 a pg` e `D-271.2 FGTS` / `C-145.7 FGTS a pg`. A tabela na tela mostra os mesmos pares de debito e credito.
 - A aba segue o padrao visual das demais: nome da empresa na primeira linha, titulo e competencia na segunda, ambos alinhados a esquerda, valores a direita, larguras automaticas e linha `TOTAL GERAL` em negrito ao final.
 - Mantem a correspondencia existente: Buffon 01 = Mtz; Buffon 02 = F01; Buffon 06 = F05. A tabela na tela e no Excel mostra somente unidades com valor diferente de zero em pelo menos uma das colunas; unidades com ambas vazias ou zeradas sao omitidas.
 - O adiantamento pode ser exportado sozinho ou junto das demais abas da folha. Valores ausentes em um resumo identificado impedem a exportacao para evitar totais incompletos.
 
-### Cuidados gerais
+### Resumo INSS
+
+- Envie os dois arquivos opcionais: Resumo GPS (PDF) e INSS desconto empregados (ODS ou XLSX). Com apenas um arquivo, a exportacao aguarda o segundo para evitar um Excel incompleto. Os dois formatos de planilha seguem as mesmas validacoes de filiais, totais, duplicidades e competencia.
+- `folha_inss.py` extrai exclusivamente `Totais Do Estabelecimento - parte Empresa` do GPS e associa os descontos pelo codigo do estabelecimento, independentemente da ordem das linhas.
+- Abas identicas no ODS sao consideradas uma unica vez. Abas divergentes, codigos duplicados, valores ausentes, totalizadores divergentes e filiais sem correspondencia impedem a apuracao.
+- A competencia vem do conteudo do GPS. Quando o nome do ODS informa MM/AAAA (tambem com ponto, espaco, hifen ou sublinhado), ela e conferida. A competencia tambem deve coincidir com a folha e o adiantamento enviados.
+- A tela e a aba `Resumo INSS` do Excel geral mostram `Filial`, `Parte empresa`, `Desconto empregados` e `Total INSS`, em ordem numerica, com `Mtz` para Buffon 01 e `F01` para Buffon 02. O INSS pode ser exportado sozinho ou junto das demais abas.
+- O Excel segue os titulos, formato monetario, alinhamento, larguras automaticas e total geral em negrito adotados no adiantamento. Nao sao presumidos codigos contabeis novos.
+- Os valores por estabelecimento sao preservados sem deducoes adicionais. Nao e exibido aviso na tela nem no Excel sobre a diferenca em relacao ao consolidado patronal do GPS. Nos exemplos de 09/2026, sao 116 unidades, empresa de R$ 2.085.120,27, descontos de R$ 638.699,88 e soma de R$ 2.723.820,15.
+
+### Provisão de 13º por estabelecimento
+
+- Envie `PDF de provisão de 13º salário` e `Planilha de saldos da provisão` (ODS ou XLSX). A rotina funciona sozinha ou inclui a aba `Provisão 13º` no Excel geral.
+- Na interface, a tabela e os avisos aparecem na aba `Provisão de 13º salário`, junto aos demais resultados. Sem os anexos, a aba informa quais arquivos enviar; o processamento isolado também exibe a provisão em uma aba própria.
+- A aba segue o padrão do projeto: empresa em fonte 14, subtítulo e competência em fonte 12, alinhados à esquerda; cabeçalhos contábeis em duas linhas, valores à direita com duas casas decimais, larguras automáticas e total geral em negrito. As filiais aparecem como `Mtz`, `F01`, `F02` etc.; esses nomes também são aceitos na leitura do mês anterior.
+- `folha_provisao_13.py` lê exclusivamente os quadros `Total por Estabelecimento`. Classificações contábeis e total da empresa não são somados novamente. Buffon 01 é Matriz e Buffon 06 é Filial 5.
+- As nove colunas são: filial; diferença C-D; saldo anterior da planilha; total do saldo anterior do PDF; provisão do mês menos reversão, na coluna 13º Salário; INSS + FGTS da provisão; pagamento na coluna 13º Salário; INSS + FGTS do Total do Débito; total D+E+F-G-H.
+- A coluna de encargos baixados segue os exemplos preenchidos e a imagem: usa Total do Débito, incluindo reversões. O e-mail repete Provisão do Mês nessa coluna, mas essa leitura não reproduz os exemplos.
+- Para a planilha do mês anterior, usa a coluna `Total prov. 13º` da aba de provisão. O modelo de setembro já iniciado por Bruna é reconhecido pelo título do mês atual e pelo cabeçalho `sl ant em folha`; nesse caso usa a coluna C, que já contém os saldos anteriores. A associação ocorre pelo nome normalizado da filial, não pela posição da linha.
+- Competências incompatíveis, duplicidades, linhas incompletas do PDF e totais diferentes do Saldo Acumulado Atual impedem a apuração. Não há ajuste automático para forçar o fechamento.
+- Quando uma filial não tem saldo anterior informado na planilha, o saldo anterior e a diferença são considerados zero, conforme regra do usuário. O aviso identifica essas filiais e os totais incluem os zeros. Um saldo explicitamente informado como zero continua participando da diferença normal C-D.
+- Nos arquivos de 09/2026 foram conferidas 116 unidades, com reprodução da matriz e dos cinco exemplos. A página 11 resulta em R$ 130.083,78 para Filial 5. Filial 119 não consta na planilha anterior e gera aviso.
+- Testes: `python -m unittest tests.test_provisao_13 tests.test_app_pdf -v`.
+
+### Limitações existentes
+
+### Fórmulas no Excel
+
+- Os resultados calculados são exportados como fórmulas com valores em cache, mantendo o uso do fechamento como saldo anterior do próximo mês.
+- Nas fórmulas de salários e pró-labore, os valores dos lançamentos são incorporados como números fixos (por exemplo, `=ROUND(123+12-(5),2)`), filtrados por filial, evento e tipo conforme a configuração da exportação. A aba `Base Folha` não é exportada. Subtotal, salário a pagar, resultado e totais gerais mantêm referências às células do relatório. A aba de salários e funcionários referencia o resumo principal.
+- FGTS e adiantamento preservam os valores extraídos e calculam os totais com SUM. O INSS calcula empresa + empregados e os totais por coluna. A provisão incorpora os valores extraídos diretamente nas fórmulas de provisão menos reversão e nas somas de INSS e FGTS, sem exportar a aba `Base Provisão`. Diferença de saldo e total mantêm as referências entre células da aba principal.
+- Mudar a configuração de códigos no sistema exige gerar outro arquivo. A aba `Códigos dos Cálculos` é documentação, não um controle de edição das fórmulas.
+- Contagens extraídas dos PDFs e campos de preenchimento manual continuam como entradas. As fórmulas usam números, nunca valores monetários armazenados como texto. Não há dependência de arquivos externos.
+- Após alterar entradas, salve a planilha em um aplicativo que recalcule fórmulas antes de utilizá-la como fechamento do mês anterior.
 
 - Os parsers dependem dos textos e formatos dos relatorios originais. Mudancas no layout dos PDFs ou do CSV podem impedir a extracao.
 - Mes e ano sao inferidos principalmente pelo nome dos arquivos, nao pelo conteudo dos relatorios.

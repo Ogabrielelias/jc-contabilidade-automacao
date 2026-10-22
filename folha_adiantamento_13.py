@@ -8,6 +8,11 @@ import pandas as pd
 
 from folha_pdf import detectar_filial
 
+HEADERS_ADIANTAMENTO = {
+    "Ad 13 Sal.": ("D-52.3 ad 13 sal", "C-2478.3 13 a pg"),
+    "Fgts s/ 13 sal.": ("D-271.2 FGTS", "C-145.7 FGTS a pg"),
+}
+
 
 def extrair_adiantamento_13(conteudo):
     """Retorna None para outros relatórios; rejeita adiantamentos incompletos."""
@@ -68,15 +73,25 @@ def tabela_adiantamento_13(dados, filiais=()):
         "Filial": "TOTAL GERAL",
         **tabela[colunas_valores].sum().round(2).to_dict(),
     }
-    return tabela
+    return tabela.rename(columns={
+        coluna: " - ".join(headers)
+        for coluna, headers in HEADERS_ADIANTAMENTO.items()
+    })
 
 
 def escrever_adiantamento_13(writer, dados, filiais=()):
     tabela = tabela_adiantamento_13(dados, filiais)
     nome = "Ad 13 Sal e FGTS"
-    tabela.to_excel(writer, sheet_name=nome, index=False, startrow=3)
+    tabela.to_excel(writer, sheet_name=nome, index=False, header=False, startrow=5)
     workbook = writer.book
     worksheet = writer.sheets[nome]
+    cabecalho = workbook.add_format({
+        "bold": True, "align": "center", "valign": "vcenter", "border": 1,
+    })
+    worksheet.merge_range("A4:A5", "Filial", cabecalho)
+    for coluna, headers in enumerate(HEADERS_ADIANTAMENTO.values(), 1):
+        worksheet.write(3, coluna, headers[0], cabecalho)
+        worksheet.write(4, coluna, headers[1], cabecalho)
     titulo = workbook.add_format({
         "bold": True, "font_size": 14, "align": "left", "valign": "vcenter",
     })
@@ -97,6 +112,9 @@ def escrever_adiantamento_13(writer, dados, filiais=()):
         "bold": True, "align": "right", "valign": "vcenter",
         "num_format": "#,##0.00",
     })
-    worksheet.set_row(len(tabela) + 3, None, total)
+    worksheet.set_row(len(tabela) + 4, None, total)
+    for coluna, letra in enumerate('BC', 1):
+        formula = f'=SUM({letra}6:{letra}{len(tabela)+4})' if len(tabela) > 1 else '=0'
+        worksheet.write_formula(len(tabela)+4, coluna, formula, total, float(tabela.iloc[-1, coluna]))
     worksheet.autofit()
     return worksheet

@@ -14,6 +14,9 @@ from folha_detalhes_ui import carregar_detalhes
 from folha_config import CHAVE_CONFIG_PDF, config_pdf_inicial, dataframe_lancamentos_pdf
 from folha_config_ui import configurar_pdf
 from folha_codigos_excel import escrever_codigos_calculos
+from folha_formulas_excel import formulas_folha
+from folha_inss import apurar_inss, tabela_inss, escrever_inss
+from folha_provisao_13 import apurar_provisao_13, tabela_provisao_13, escrever_provisao_13
 from folha_adiantamento_13 import (
     extrair_adiantamento_13,
     tabela_adiantamento_13,
@@ -21,6 +24,18 @@ from folha_adiantamento_13 import (
 )
 
 dados_adiantamento_13 = None
+dados_inss = None
+dados_provisao_13 = None
+
+
+def mostrar_provisao_13(dados):
+    st.subheader('Provisão de 13º salário')
+    if dados:
+        for aviso in dados['avisos']:
+            st.warning(aviso)
+        st.dataframe(tabela_provisao_13(dados), hide_index=True, width='stretch')
+    else:
+        st.info('Envie o PDF de provisão de 13º salário e a planilha de saldos (ODS ou XLSX) para apurar a provisão.')
 
 SUPABASE_URL = st.secrets["supabase_url"]
 SUPABASE_KEY = st.secrets["supabase_key"]
@@ -612,6 +627,49 @@ with st.container(border=True):
             key="pdf_prov",
         )
 
+    provisao_cols = st.columns(2)
+    with provisao_cols[0]:
+        pdf_provisao = st.file_uploader(
+            "PDF de provisão de 13º salário (opcional)", type=['pdf'], key='pdf_provisao_13'
+        )
+    with provisao_cols[1]:
+        saldos_provisao = st.file_uploader(
+            "Planilha de saldos da provisão (ODS ou XLSX)", type=['ods', 'xlsx'], key='saldos_provisao_13'
+        )
+        st.caption('Use o fechamento do mês anterior ou o modelo atual com a coluna de saldo anterior preenchida.')
+    if pdf_provisao or saldos_provisao:
+        if not (pdf_provisao and saldos_provisao):
+            st.warning('Envie o PDF e a planilha de saldos para apurar a provisão de 13º.')
+            st.stop()
+        try:
+            dados_provisao_13 = apurar_provisao_13(
+                pdf_provisao.getvalue(), saldos_provisao.getvalue(), saldos_provisao.name
+            )
+        except Exception as erro:
+            st.error(f'Não foi possível apurar a provisão de 13º: {erro}')
+            st.stop()
+
+    inss_cols = st.columns(2)
+    with inss_cols[0]:
+        st.write("Envie o **Resumo GPS** com a parte empresa por estabelecimento.")
+        pdf_inss = st.file_uploader(
+            "Resumo GPS (opcional)", type=["pdf"], key="pdf_inss"
+        )
+    with inss_cols[1]:
+        st.write("Envie os **descontos de INSS dos empregados** da mesma competência.")
+        ods_inss = st.file_uploader(
+            "INSS desconto empregados (ODS ou XLSX, opcional)", type=["ods", "xlsx"], key="ods_inss"
+        )
+    if pdf_inss or ods_inss:
+        if not (pdf_inss and ods_inss):
+            st.warning("Envie os dois arquivos de INSS para calcular e incluir o resumo no Excel geral.")
+            st.stop()
+        try:
+            dados_inss = apurar_inss(pdf_inss.getvalue(), ods_inss.getvalue(), ods_inss.name)
+        except Exception as erro:
+            st.error(f"Não foi possível apurar o INSS: {erro}")
+            st.stop()
+
     if pdf_quebra_file:
         resultados_quebra = [
             {chave: valor for chave, valor in linha.items() if chave != "Func."}
@@ -851,6 +909,15 @@ with st.container(border=True):
             print(f"[ERRO] {e}")
             st.stop()
 
+    competencias_anexos = {d['competencia'] for d in (dados_inss, dados_adiantamento_13, dados_provisao_13) if d}
+    if len(competencias_anexos) > 1:
+        st.error('Os anexos têm competências diferentes. Envie arquivos do mesmo mês.')
+        st.stop()
+    if dados_inss and dados_adiantamento_13:
+        if dados_inss["competencia"] != dados_adiantamento_13["competencia"]:
+            st.error("A competência do INSS difere do adiantamento de 13º. Envie arquivos da mesma competência.")
+            st.stop()
+
 if fonte_pdf and pdf_file:
     try:
         dados_folha_pdf = carregar_detalhes(pdf_file.getvalue())
@@ -871,6 +938,8 @@ if fonte_pdf and pdf_file:
                         "Resumo prolabore",
                         "Adiantamento 13° salário",
                         "Dados Extraídos",
+                        "Resumo INSS",
+                        "Provisão de 13º salário",
                     ]
                 )
                 with tabs_pdf[0]:
@@ -889,6 +958,12 @@ if fonte_pdf and pdf_file:
                     data_folha = datetime.strptime(periodo_pdf, "%d/%m/%Y")
                     ss["csv_mes"] = data_folha.strftime("%m")
                     ss["csv_ano"] = data_folha.strftime("%Y")
+                    if dados_provisao_13 and dados_provisao_13['competencia'] != data_folha.strftime('%m/%Y'):
+                        st.error('A competência da provisão de 13º difere da folha de salários.')
+                        st.stop()
+                    if dados_inss and dados_inss["competencia"] != data_folha.strftime("%m/%Y"):
+                        st.error("A competência do INSS difere da folha de salários. Envie arquivos da mesma competência.")
+                        st.stop()
                     if dados_adiantamento_13:
                         if (
                             dados_adiantamento_13["competencia"]
@@ -913,18 +988,38 @@ if fonte_pdf and pdf_file:
         st.error(f"Não foi possível preparar a folha PDF: {erro}")
 
 
-if "df_final" not in locals() and dados_adiantamento_13:
+if 'tabs_pdf' in locals():
+    with tabs_pdf[6]:
+        mostrar_provisao_13(dados_provisao_13)
+
+if "df_final" not in locals() and (dados_adiantamento_13 or dados_inss or dados_provisao_13):
     with st.container(border=True):
-        st.subheader("Adiantamento 13° salário")
-        st.write(tabela_adiantamento_13(dados_adiantamento_13))
+        if dados_provisao_13 and 'tabs_pdf' not in locals():
+            with st.tabs(['Provisão de 13º salário'])[0]:
+                mostrar_provisao_13(dados_provisao_13)
+        if dados_adiantamento_13:
+            st.subheader("Adiantamento 13° salário")
+            st.write(tabela_adiantamento_13(dados_adiantamento_13))
+        if dados_inss:
+            st.subheader("Resumo INSS")
+            st.write(tabela_inss(dados_inss))
+            for aviso in dados_inss["avisos"]:
+                st.warning(aviso)
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            escrever_adiantamento_13(writer, dados_adiantamento_13)
+            if dados_provisao_13:
+                escrever_provisao_13(writer, dados_provisao_13)
+            if dados_adiantamento_13:
+                escrever_adiantamento_13(writer, dados_adiantamento_13)
+            if dados_inss:
+                escrever_inss(writer, dados_inss)
+        dados_exportacao = dados_inss or dados_adiantamento_13 or dados_provisao_13
+        prefixo = "resumo_inss_buffon_" if dados_inss else "resumo_adiantamento_13_buffon_" if dados_adiantamento_13 else "provisao_13_buffon_"
         st.download_button(
             label=":material/download: Baixar resultado geral",
             data=output.getvalue(),
-            file_name="resumo_adiantamento_13_buffon_"
-            + dados_adiantamento_13["competencia"].replace("/", "-")
+            file_name=prefixo
+            + dados_exportacao["competencia"].replace("/", "-")
             + ".xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             type="primary",
@@ -951,8 +1046,23 @@ if "df_final" in locals():
                         "Resumo prolabore",
                         "Adiantamento 13° salário",
                         "Dados Extraídos",
+                        "Resumo INSS",
+                        "Provisão de 13º salário",
                     ]
                 )
+
+            if not fonte_pdf:
+                with tabs[6]:
+                    mostrar_provisao_13(dados_provisao_13)
+
+            with tabs[5]:
+                st.subheader("Resumo INSS")
+                if dados_inss:
+                    st.write(tabela_inss(dados_inss))
+                    for aviso in dados_inss["avisos"]:
+                        st.warning(aviso)
+                else:
+                    st.info("Envie o Resumo GPS e o ODS de descontos dos empregados para apurar o INSS.")
 
             with tabs[4]:
                 st.write(
@@ -2283,6 +2393,10 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                     escrever_adiantamento_13(
                         writer, dados_adiantamento_13, df_final["filial"].unique()
                     )
+                if dados_inss:
+                    escrever_inss(writer, dados_inss)
+                if dados_provisao_13:
+                    escrever_provisao_13(writer, dados_provisao_13)
                 escrever_codigos_calculos(
                     workbook,
                     df_final,
@@ -2294,6 +2408,13 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                     format_title,
                     format_sub,
                     fmt_num,
+                )
+                formulas_folha(
+                    writer, df_final, df_download_totais, df_download_extra,
+                    df_download_extra_caixa, codigos_selecionados, COLUNAS_ESPECIAIS,
+                    config_pdf['prolabore'] if fonte_pdf else ['17'],
+                    config_pdf['inss_prolabore'] if fonte_pdf else ['940'],
+                    last_row_totais + 5,
                 )
                 for aba_excel in workbook.worksheets():
                     aba_excel.autofit()

@@ -32,6 +32,20 @@ class Query:
 
 
 def uploader(*args, **kwargs):
+    if kwargs.get('key') in ('pdf_provisao_13', 'saldos_provisao_13') and st.session_state.get('test_provisao'):
+        if kwargs['key'] == 'saldos_provisao_13' and st.session_state.get('test_provisao_incompleta'):
+            return None
+        nome = 'Provisão de 13° Buffon Final  09 - 2026.pdf' if kwargs['key'] == 'pdf_provisao_13' else 'prov 13 sal _09-2026 (3) nova.ods'
+        arquivo = io.BytesIO((root / nome).read_bytes())
+        arquivo.name = nome
+        return arquivo
+    if kwargs.get("key") in ("pdf_inss", "ods_inss") and st.session_state.get("test_inss"):
+        if kwargs["key"] == "ods_inss" and st.session_state.get("test_inss_incompleto"):
+            return None
+        nome = "Resumo GPS Buffon 09 2026 (1).pdf" if kwargs["key"] == "pdf_inss" else "Buffon Inss Desconto Empregados 09.2026 (1).ods"
+        arquivo = io.BytesIO((root / nome).read_bytes())
+        arquivo.name = nome
+        return arquivo
     if kwargs.get("key") == "pdf_prov" and st.session_state.get("test_pdf_13_invalido"):
         import fitz
         with fitz.open() as doc:
@@ -45,7 +59,9 @@ def uploader(*args, **kwargs):
         arquivo.name = "adiantamento.pdf"
         return arquivo
     if kwargs.get("key") == "pdf_funcionarios":
-        if st.session_state.get("test_somente_adiantamento"):
+        if st.session_state.get('test_somente_provisao'):
+            return None
+        if st.session_state.get("test_somente_adiantamento") or st.session_state.get("test_somente_inss"):
             return None
         path = root / "Buffon Folha de salário 09 2026.pdf"
         arquivo = io.BytesIO(path.read_bytes())

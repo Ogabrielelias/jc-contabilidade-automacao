@@ -13,6 +13,103 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @unittest.skipUnless((ROOT / "Buffon Folha de salário 09 2026.pdf").exists(), "PDF de exemplo ausente")
 class AppPdfTest(unittest.TestCase):
+    def test_formulas_recalculam_salarios_e_totais(self):
+        from tests.support.calcular_excel import calcular
+        app = self.iniciar()
+        app.session_state['test_provisao'] = True
+        app.session_state['test_inss'] = True
+        app.session_state['test_adiantamento'] = True
+        app.run()
+        app.button[0].click().run()
+        self.assertFalse(app.exception)
+        self.assertFalse(app.error)
+        arquivo = app.session_state['test_export']
+        workbook = openpyxl.load_workbook(io.BytesIO(arquivo))
+        cache = openpyxl.load_workbook(io.BytesIO(arquivo), data_only=True)
+        ler = calcular(workbook)
+        quantidade = 0
+        for aba in workbook:
+            for row in aba:
+                for celula in row:
+                    if celula.data_type != 'f':
+                        continue
+                    self.assertNotIn('Base Folha', celula.value)
+                    self.assertNotIn('Base Provisão', celula.value)
+                    self.assertNotIn('SUMIFS(', celula.value)
+                    self.assertLessEqual(len(celula.value), 8192)
+                    esperado = cache[aba.title][celula.coordinate].value
+                    atual = ler(aba.title, celula.coordinate)
+                    if esperado is None:
+                        self.assertEqual(atual, '', (aba.title, celula.coordinate))
+                    else:
+                        self.assertAlmostEqual(atual, esperado, places=2, msg=f'{aba.title}!{celula.coordinate}')
+                    quantidade += 1
+        self.assertGreater(quantidade, 1000)
+        self.assertNotIn('Base Folha', workbook.sheetnames)
+        self.assertNotIn('Base Provisão', workbook.sheetnames)
+        # Os valores de origem estão embutidos nas fórmulas.
+        ws = workbook['Resumo Salários']
+        coluna_resultado = next(c.column_letter for c in ws[5] if c.value == 'Resultado')
+        antes = ler(ws.title, coluna_resultado+'6')
+        coluna_salario = next(c.column_letter for c in ws[5] if c.value == 'T. salário')
+        ws[coluna_salario+'6'] = ws[coluna_salario+'6'].value + '+100'
+        self.assertAlmostEqual(calcular(workbook)(ws.title, coluna_resultado+'6'), antes+100, places=2)
+        antes = ler('Provisão 13º', 'I11')
+        workbook['Provisão 13º']['E11'] = workbook['Provisão 13º']['E11'].value + '+50'
+        self.assertAlmostEqual(calcular(workbook)('Provisão 13º', 'I11'), antes+50, places=2)
+
+    def test_provisao_sozinha_e_no_excel_geral(self):
+        app = self.iniciar()
+        app.session_state['test_provisao'] = True
+        app.session_state['test_somente_provisao'] = True
+        app.run()
+        self.assertFalse(app.exception)
+        self.assertFalse(app.error)
+        self.assertTrue(any('Filial 119' in w.value for w in app.warning))
+        self.assertEqual(app.tabs[0].label, 'Provisão de 13º salário')
+        self.assertEqual(len(app.tabs[0].dataframe), 1)
+        workbook = openpyxl.load_workbook(io.BytesIO(app.session_state['test_export']), data_only=True)
+        self.assertEqual(workbook.sheetnames, ['Provisão 13º'])
+        self.assertEqual(workbook.active['I11'].value, 130083.78)
+        app.session_state['test_somente_provisao'] = False
+        app.run()
+        app.button[0].click().run()
+        self.assertFalse(app.exception)
+        self.assertFalse(app.error)
+        workbook = openpyxl.load_workbook(io.BytesIO(app.session_state['test_export']))
+        self.assertIn('Resumo Salários', workbook.sheetnames)
+        self.assertIn('Provisão 13º', workbook.sheetnames)
+        self.assertEqual(app.tabs[6].label, 'Provisão de 13º salário')
+        self.assertEqual(len(app.tabs[6].dataframe), 1)
+        app.session_state['test_provisao_incompleta'] = True
+        app.run()
+        self.assertFalse(app.get('download_button'))
+
+    def test_inss_sozinho_e_no_excel_geral(self):
+        app = self.iniciar()
+        app.session_state['test_inss'] = True
+        app.session_state['test_somente_inss'] = True
+        app.run()
+        self.assertFalse(app.exception)
+        self.assertFalse(app.error)
+        workbook = openpyxl.load_workbook(io.BytesIO(app.session_state['test_export']))
+        self.assertEqual(workbook.sheetnames, ['Resumo INSS'])
+        self.assertEqual(workbook.active['D5'].value, '=B5+C5')
+        app.session_state['test_somente_inss'] = False
+        app.run()
+        app.button[0].click().run()
+        self.assertFalse(app.exception)
+        self.assertFalse(app.error)
+        workbook = openpyxl.load_workbook(io.BytesIO(app.session_state['test_export']))
+        self.assertIn('Resumo Salários', workbook.sheetnames)
+        self.assertIn('Resumo INSS', workbook.sheetnames)
+        self.assertEqual(workbook['Resumo INSS']['D121'].value, '=SUM(D5:D120)')
+        app.session_state['test_inss_incompleto'] = True
+        app.run()
+        self.assertFalse(app.exception)
+        self.assertTrue(any('dois arquivos' in aviso.value for aviso in app.warning))
+        self.assertFalse(app.get('download_button'))
+
     def test_entrada_13_rejeita_modelo_antigo(self):
         app = self.iniciar()
         app.session_state["test_pdf_13_invalido"] = True
@@ -44,12 +141,12 @@ class AppPdfTest(unittest.TestCase):
         self.assertIn("Resumo Salários", workbook.sheetnames)
         self.assertIn("Ad 13 Sal e FGTS", workbook.sheetnames)
         aba = workbook["Ad 13 Sal e FGTS"]
-        valores = {r[0]: r[1:3] for r in list(aba.values)[4:]}
+        valores = {r[0]: r[1:3] for r in list(aba.values)[5:]}
         self.assertEqual(valores["F05"], (7117.99, 569.42))
         self.assertNotIn("Mtz", valores)
         self.assertEqual(valores["F116"], (2766.07, 221.28))
         self.assertEqual(len(valores), 16)
-        self.assertEqual(valores["TOTAL GERAL"], (32269.45, 2581.47))
+        self.assertEqual(valores["TOTAL GERAL"], ('=SUM(B6:B20)', '=SUM(C6:C20)'))
 
     def iniciar(self, config=None):
         # Diretório controlado pelo teste evita problemas do sandbox com TEMP do Windows.
@@ -76,7 +173,7 @@ class AppPdfTest(unittest.TestCase):
         app.button[0].click().run()
         self.assertFalse(app.exception)
         self.assertFalse(app.error)
-        self.assertEqual(len(app.tabs), 5)
+        self.assertEqual(len(app.tabs), 7)
         banco = app.session_state["test_db"]
         self.assertEqual(list(banco), [CHAVE_CONFIG_PDF])
         self.assertEqual(banco[CHAVE_CONFIG_PDF]["codigos_padrao"], ["00050001"])
