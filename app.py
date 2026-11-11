@@ -35,7 +35,7 @@ def mostrar_provisao_13(dados):
             st.warning(aviso)
         st.dataframe(tabela_provisao_13(dados), hide_index=True, width='stretch')
     else:
-        st.info('Envie o PDF de provisão de 13º salário e a planilha de saldos (ODS ou XLSX) para apurar a provisão.')
+        st.info('Envie o PDF de provisão de 13º salário. A planilha de saldos (ODS ou XLSX) é opcional; sem ela, o saldo anterior poderá ser preenchido manualmente no Excel.')
 
 SUPABASE_URL = st.secrets["supabase_url"]
 SUPABASE_KEY = st.secrets["supabase_key"]
@@ -634,16 +634,18 @@ with st.container(border=True):
         )
     with provisao_cols[1]:
         saldos_provisao = st.file_uploader(
-            "Planilha de saldos da provisão (ODS ou XLSX)", type=['ods', 'xlsx'], key='saldos_provisao_13'
+            "Planilha de saldos da provisão (opcional, ODS ou XLSX)", type=['ods', 'xlsx'], key='saldos_provisao_13'
         )
-        st.caption('Use o fechamento do mês anterior ou o modelo atual com a coluna de saldo anterior preenchida.')
+        st.caption('Use o fechamento do mês anterior ou o modelo atual com a coluna de saldo anterior preenchida. Sem a planilha, os saldos anteriores ficam em branco no Excel para preenchimento manual.')
     if pdf_provisao or saldos_provisao:
-        if not (pdf_provisao and saldos_provisao):
-            st.warning('Envie o PDF e a planilha de saldos para apurar a provisão de 13º.')
+        if not pdf_provisao:
+            st.warning('Envie o PDF de provisão de 13º para apurar os dados. A planilha de saldos é opcional.')
             st.stop()
         try:
             dados_provisao_13 = apurar_provisao_13(
-                pdf_provisao.getvalue(), saldos_provisao.getvalue(), saldos_provisao.name
+                pdf_provisao.getvalue(),
+                saldos_provisao.getvalue() if saldos_provisao else None,
+                saldos_provisao.name if saldos_provisao else '',
             )
         except Exception as erro:
             st.error(f'Não foi possível apurar a provisão de 13º: {erro}')

@@ -127,19 +127,21 @@ def ler_saldos(conteudo, nome, competencia):
     return saldos
 
 
-def apurar_provisao_13(pdf, planilha, nome):
+def apurar_provisao_13(pdf, planilha=None, nome=''):
     dados = extrair_provisao_13(pdf)
-    saldos = ler_saldos(planilha, nome, dados['competencia'])
+    saldos = ler_saldos(planilha, nome, dados['competencia']) if planilha else {}
     faltantes = {f for f in dados['registros'] if saldos.get(f) is None}
     dados['avisos'] = []
-    if faltantes:
+    if planilha and faltantes:
         dados['avisos'].append('Saldo anterior e diferença considerados zero por ausência na planilha: ' + ', '.join(sorted(faltantes)))
+    elif not planilha:
+        dados['avisos'].append('Planilha de saldos não enviada. Preencha manualmente a coluna Saldo anterior planilha no Excel; a diferença será calculada após o preenchimento.')
     extras = set(saldos) - set(dados['registros'])
     if extras:
         dados['avisos'].append('Filiais da planilha sem total no PDF: ' + ', '.join(sorted(extras)))
     for filial, r in dados['registros'].items():
         r['saldo_ausente'] = filial in faltantes
-        r['saldo_planilha'] = saldos.get(filial) if filial not in faltantes else Decimal(0)
+        r['saldo_planilha'] = (saldos.get(filial) if filial not in faltantes else Decimal(0)) if planilha else None
     return dados
 
 
@@ -149,8 +151,8 @@ def tabela_provisao_13(dados):
         r = dados['registros'][filial]
         saldo = r['saldo_planilha']
         nome = 'Mtz' if filial == 'Matriz' else f'F{int(filial.split()[-1]):02d}'
-        rows.append([nome, 0.0 if r['saldo_ausente'] else float(saldo-r['valores'][0]),
-                     float(saldo), *map(float, r['valores'])])
+        diferenca = None if saldo is None else (0.0 if r['saldo_ausente'] else float(saldo-r['valores'][0]))
+        rows.append([nome, diferenca, None if saldo is None else float(saldo), *map(float, r['valores'])])
     return pd.DataFrame(rows, columns=COLUNAS)
 
 
@@ -186,7 +188,10 @@ def escrever_provisao_13(writer, dados):
         ws.write_formula(i, 4, f'={valores[0]}-{valores[1]}', num, row[4])
         ws.write_formula(i, 5, f'={valores[2]}+{valores[3]}', num, row[5])
         ws.write_formula(i, 7, f'={valores[4]}+{valores[5]}', num, row[7])
-        ws.write_formula(i, 1, f'=IF(C{n}=0,0,C{n}-D{n})' if registro['saldo_ausente'] else f'=C{n}-D{n}', num, row[1])
+        if registro['saldo_planilha'] is None:
+            ws.write_formula(i, 1, f'=IF(C{n}="","",C{n}-D{n})', num, '')
+        else:
+            ws.write_formula(i, 1, f'=IF(C{n}=0,0,C{n}-D{n})' if registro['saldo_ausente'] else f'=C{n}-D{n}', num, row[1])
         ws.write_formula(i, 8, f'=D{n}+E{n}+F{n}-G{n}-H{n}', num, row[8])
     fim = 5+len(tabela)
     ws.write(fim, 0, 'TOTAL GERAL', total)

@@ -364,7 +364,7 @@ streamlit run app.py --server.port=8080 --server.address=0.0.0.0
 
 ### Provisão de 13º por estabelecimento
 
-- Envie `PDF de provisão de 13º salário` e `Planilha de saldos da provisão` (ODS ou XLSX). A rotina funciona sozinha ou inclui a aba `Provisão 13º` no Excel geral.
+- Envie `PDF de provisão de 13º salário`; `Planilha de saldos da provisão` (ODS ou XLSX) é opcional. Sem a planilha, a coluna `Saldo anterior planilha` fica em branco no Excel para preenchimento manual, e a diferença fica em branco até que o saldo seja preenchido. A rotina funciona sozinha ou inclui a aba `Provisão 13º` no Excel geral.
 - Na interface, a tabela e os avisos aparecem na aba `Provisão de 13º salário`, junto aos demais resultados. Sem os anexos, a aba informa quais arquivos enviar; o processamento isolado também exibe a provisão em uma aba própria.
 - A aba segue o padrão do projeto: empresa em fonte 14, subtítulo e competência em fonte 12, alinhados à esquerda; cabeçalhos contábeis em duas linhas, valores à direita com duas casas decimais, larguras automáticas e total geral em negrito. As filiais aparecem como `Mtz`, `F01`, `F02` etc.; esses nomes também são aceitos na leitura do mês anterior.
 - `folha_provisao_13.py` lê exclusivamente os quadros `Total por Estabelecimento`. Classificações contábeis e total da empresa não são somados novamente. Buffon 01 é Matriz e Buffon 06 é Filial 5.
@@ -372,7 +372,7 @@ streamlit run app.py --server.port=8080 --server.address=0.0.0.0
 - A coluna de encargos baixados segue os exemplos preenchidos e a imagem: usa Total do Débito, incluindo reversões. O e-mail repete Provisão do Mês nessa coluna, mas essa leitura não reproduz os exemplos.
 - Para a planilha do mês anterior, usa a coluna `Total prov. 13º` da aba de provisão. O modelo de setembro já iniciado por Bruna é reconhecido pelo título do mês atual e pelo cabeçalho `sl ant em folha`; nesse caso usa a coluna C, que já contém os saldos anteriores. A associação ocorre pelo nome normalizado da filial, não pela posição da linha.
 - Competências incompatíveis, duplicidades, linhas incompletas do PDF e totais diferentes do Saldo Acumulado Atual impedem a apuração. Não há ajuste automático para forçar o fechamento.
-- Quando uma filial não tem saldo anterior informado na planilha, o saldo anterior e a diferença são considerados zero, conforme regra do usuário. O aviso identifica essas filiais e os totais incluem os zeros. Um saldo explicitamente informado como zero continua participando da diferença normal C-D.
+- Quando uma filial não tem saldo anterior informado em uma planilha enviada, o saldo anterior e a diferença são considerados zero, conforme regra do usuário. O aviso identifica essas filiais e os totais incluem os zeros. Um saldo explicitamente informado como zero continua participando da diferença normal C-D.
 - Nos arquivos de 09/2026 foram conferidas 116 unidades, com reprodução da matriz e dos cinco exemplos. A página 11 resulta em R$ 130.083,78 para Filial 5. Filial 119 não consta na planilha anterior e gera aviso.
 - Testes: `python -m unittest tests.test_provisao_13 tests.test_app_pdf -v`.
 
