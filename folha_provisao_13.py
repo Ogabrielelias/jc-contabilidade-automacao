@@ -27,10 +27,19 @@ def extrair_provisao_13(conteudo):
             words = page.get_text('words')
             for marker in page.search_for('Total por Estabelecimento'):
                 nome = page.get_textbox(fitz.Rect(0, marker.y0, marker.x1 + 100, marker.y1 + 15))
-                match = re.search(r'(\d+)\s*-\s*Buffon\s+(\d+)', nome)
-                if not match:
-                    raise ValueError(f'Estabelecimento inválido na página {pagina}.')
-                codigo, unidade = map(int, match.groups())
+                match = re.search(r'(\d+)\s*[-–—]\s*Buffon\s+(\d+)', nome, re.I)
+                if match:
+                    codigo, unidade = map(int, match.groups())
+                else:
+                    # Algumas versões do PDF posicionam o cabeçalho fora da
+                    # caixa calculada acima. Recorra ao texto completo da
+                    # página, aceitando-o apenas quando a identificação for única.
+                    identificacoes = set(re.findall(
+                        r'(\d+)\s*[-–—]\s*Buffon\s+(\d+)', texto, re.I
+                    ))
+                    if len(identificacoes) != 1:
+                        raise ValueError(f'Estabelecimento inválido na página {pagina}.')
+                    codigo, unidade = map(int, identificacoes.pop())
                 filial = 'Matriz' if unidade == 1 else f'Filial {unidade-1}'
                 if codigo != 1000 + unidade or unidade < 1 or filial in registros:
                     raise ValueError(f'Estabelecimento duplicado ou inválido: {codigo}.')
