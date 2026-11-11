@@ -63,7 +63,7 @@ def uploader(*args, **kwargs):
             return None
         if st.session_state.get("test_somente_adiantamento") or st.session_state.get("test_somente_inss"):
             return None
-        path = root / "Buffon Folha de salário 09 2026.pdf"
+        path = root / st.session_state.get('test_folha_nome', "Buffon Folha de salário 09 2026.pdf")
         arquivo = io.BytesIO(path.read_bytes())
         arquivo.name = path.name
         return arquivo

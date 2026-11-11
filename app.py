@@ -975,6 +975,16 @@ if fonte_pdf and pdf_file:
                                 "A competência do PDF de 13º difere da folha de salários."
                             )
                     if config_pdf["configurado"]:
+                        sem_fgts = [
+                            r['Unidade'] for r in dados_folha_pdf['resumos']
+                            if r['Unidade'] != 'Total da empresa' and r.get('Vlr. FGTS') is None
+                        ]
+                        if sem_fgts:
+                            raise ValueError(
+                                'Valor de FGTS não encontrado no PDF para: '
+                                + ', '.join(sem_fgts)
+                                + '. Confira se o relatório contém todas as páginas dessas filiais.'
+                            )
                         df_final = dataframe_lancamentos_pdf(
                             dados_folha_pdf, config_pdf
                         )
@@ -2343,6 +2353,14 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         header_format=fmt_num,
                         data_format=fmt_right,
                     )
+                    header_fgts = workbook.add_format({
+                        'bold': True, 'align': 'center', 'valign': 'vcenter',
+                        'text_wrap': True,
+                    })
+                    for bloco in range(layout_caixa['num_blocos']):
+                        coluna = bloco * (len(header_caixa) + 1) + 1
+                        worksheet_caixa.write(3, coluna, coluna_fgts + '\nH-21', header_fgts)
+                    worksheet_caixa.set_row(3, 32)
 
                     # Linha 0 → título
                     worksheet_caixa.merge_range(
@@ -2396,7 +2414,7 @@ Por padrão, cada categoria já vem preenchida com os códigos mais utilizados, 
                         writer, dados_adiantamento_13, df_final["filial"].unique()
                     )
                 if dados_inss:
-                    escrever_inss(writer, dados_inss)
+                    escrever_inss(writer, dados_inss, df_download_totais)
                 if dados_provisao_13:
                     escrever_provisao_13(writer, dados_provisao_13)
                 escrever_codigos_calculos(

@@ -171,7 +171,7 @@ def escrever_provisao_13(writer, dados):
     tabela.to_excel(writer, sheet_name=nome, startrow=5, index=False, header=False)
     ws, wb = writer.sheets[nome], writer.book
     num = wb.add_format({'num_format': '#,##0.00', 'align': 'right', 'valign': 'vcenter'})
-    header = wb.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'border': 1})
+    header = wb.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'text_wrap': True})
     titulo = wb.add_format({'bold': True, 'font_size': 14, 'align': 'left', 'valign': 'vcenter'})
     subtitulo = wb.add_format({'bold': True, 'font_size': 12, 'align': 'left', 'valign': 'vcenter'})
     total = wb.add_format({'bold': True, 'num_format': '#,##0.00', 'align': 'right', 'valign': 'vcenter'})
@@ -186,7 +186,9 @@ def escrever_provisao_13(writer, dados):
         (7, 'D-162.7 Prov 13º sal', 'C-1324.2 - Enc. s/13º sal.'),
     ):
         ws.write(3, coluna, debito, header)
-        ws.write(4, coluna, credito, header)
+        historico = {4: 'H-25', 5: 'H-106', 7: 'H-111'}.get(coluna)
+        ws.write(4, coluna, credito + ('\n' + historico if historico else ''), header)
+    ws.set_row(4, 32)
     ws.set_column('B:I', None, num)
     ws.freeze_panes(5, 0)
     for i, row in enumerate(tabela.itertuples(index=False, name=None), 5):

@@ -14,12 +14,60 @@ HEADERS_ADIANTAMENTO = {
 }
 
 
+def _valor_evento_adiantamento(texto, codigo):
+    numero = r"\(?-?\d[\d.]*,\d{2}\)?"
+    linhas = texto.splitlines()
+    for i, linha in enumerate(linhas):
+        if not re.match(rf"\s*{codigo}\s*-", linha):
+            continue
+        valores = []
+        for seguinte in linhas[i + 1:]:
+            seguinte = seguinte.strip()
+            if re.match(r"\d{8}\s*-", seguinte):
+                break
+            valores.extend(re.findall(numero, seguinte))
+            if len(valores) >= 2:
+                break
+        if len(valores) == 2:
+            return Decimal(valores[-1].strip("()").replace(".", "").replace(",", "."))
+        raise ValueError(f"Evento {codigo} incompleto no PDF de adiantamento.")
+    return None
+
+
+def _extrair_adiantamento_layout_atual(paginas):
+    periodo = re.search(
+        r"Folhas de \d{2}/\d{2}/\d{4} a \d{2}/(\d{2}/\d{4})", "\n".join(paginas)
+    )
+    if not periodo:
+        raise ValueError("Competência não encontrada no PDF de adiantamento.")
+
+    registros = {}
+    for texto in paginas:
+        filial = detectar_filial(texto)
+        if filial is None or not re.search(r"00030001\s*-", texto):
+            continue
+        liquido = _valor_evento_adiantamento(texto, "00099995")
+        fgts = _valor_evento_adiantamento(texto, "00079521")
+        if liquido is None or fgts is None:
+            raise ValueError(f"Líquido ou FGTS ausente no resumo de {filial}.")
+        registro = {"Ad 13 Sal.": liquido, "Fgts s/ 13 sal.": fgts}
+        if filial in registros and registros[filial] != registro:
+            raise ValueError(f"Totais conflitantes para {filial}.")
+        registros[filial] = registro
+    if not registros:
+        raise ValueError("Nenhum estabelecimento encontrado no PDF de adiantamento.")
+    return {"competencia": periodo[1], "registros": registros}
+
+
 def extrair_adiantamento_13(conteudo):
     """Retorna None para outros relatórios; rejeita adiantamentos incompletos."""
     with fitz.open(stream=conteudo, filetype="pdf") as documento:
-        texto = "\n".join(pagina.get_text() for pagina in documento)
+        paginas = [pagina.get_text() for pagina in documento]
+        texto = "\n".join(paginas)
     if not re.search(r"00030001\s*-", texto):
         return None
+    if re.search(r"Folha\s+De\s+Pagamento\s*-\s*Estabelecimentos", texto, re.I):
+        return _extrair_adiantamento_layout_atual(paginas)
     periodo = re.search(
         r"Folhas de \d{2}/\d{2}/\d{4} a \d{2}/(\d{2}/\d{4})", texto
     )
@@ -86,12 +134,13 @@ def escrever_adiantamento_13(writer, dados, filiais=()):
     workbook = writer.book
     worksheet = writer.sheets[nome]
     cabecalho = workbook.add_format({
-        "bold": True, "align": "center", "valign": "vcenter", "border": 1,
+        "bold": True, "align": "center", "valign": "vcenter", "border": 1, "text_wrap": True,
     })
     worksheet.merge_range("A4:A5", "Filial", cabecalho)
     for coluna, headers in enumerate(HEADERS_ADIANTAMENTO.values(), 1):
         worksheet.write(3, coluna, headers[0], cabecalho)
-        worksheet.write(4, coluna, headers[1], cabecalho)
+        worksheet.write(4, coluna, headers[1] + f"\nH-{172 + coluna}", cabecalho)
+    worksheet.set_row(4, 32)
     titulo = workbook.add_format({
         "bold": True, "font_size": 14, "align": "left", "valign": "vcenter",
     })

@@ -13,6 +13,20 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @unittest.skipUnless((ROOT / "Buffon Folha de salário 09 2026.pdf").exists(), "PDF de exemplo ausente")
 class AppPdfTest(unittest.TestCase):
+    def test_folha_outubro_prepara_fgts_e_exporta(self):
+        nome = 'Buffon Salário 10 2026.pdf'
+        if not (ROOT / nome).exists():
+            self.skipTest('PDF de outubro ausente')
+        app = self.iniciar()
+        app.session_state['test_folha_nome'] = nome
+        app.run()
+        app.button[0].click().run()
+        self.assertFalse(app.exception)
+        self.assertFalse(app.error)
+        wb = openpyxl.load_workbook(io.BytesIO(app.session_state['test_export']), data_only=True)
+        self.assertAlmostEqual(wb['FGTS e Honorários']['B5'].value, 13675.37, places=2)
+        self.assertEqual(app.session_state['test_export_name'], 'resumo_salarios_buffon_10-2026.xlsx')
+
     def test_formulas_recalculam_salarios_e_totais(self):
         from tests.support.calcular_excel import calcular
         app = self.iniciar()
@@ -47,6 +61,14 @@ class AppPdfTest(unittest.TestCase):
         self.assertGreater(quantidade, 1000)
         self.assertNotIn('Base Folha', workbook.sheetnames)
         self.assertNotIn('Base Provisão', workbook.sheetnames)
+        inss = workbook['Resumo INSS']
+        for coluna, historico in (('D', 'H-20'), ('E', 'H-84'), ('F', 'H-85')):
+            self.assertTrue(inss[coluna+'3'].value.endswith('\n'+historico))
+        for coluna in ('E', 'F'):
+            self.assertTrue(inss[coluna+'5'].value.startswith("='Resumo Salários'!"))
+        fgts = workbook['FGTS e Honorários']
+        for coluna in ('B', 'E', 'H'):
+            self.assertTrue(fgts[coluna+'4'].value.endswith('\nH-21'))
         # Os valores de origem estão embutidos nas fórmulas.
         ws = workbook['Resumo Salários']
         coluna_resultado = next(c.column_letter for c in ws[5] if c.value == 'Resultado')
@@ -82,8 +104,14 @@ class AppPdfTest(unittest.TestCase):
         self.assertEqual(app.tabs[6].label, 'Provisão de 13º salário')
         self.assertEqual(len(app.tabs[6].dataframe), 1)
         app.session_state['test_provisao_incompleta'] = True
+        app.session_state['test_somente_provisao'] = True
         app.run()
-        self.assertFalse(app.get('download_button'))
+        self.assertFalse(app.exception)
+        self.assertFalse(app.error)
+        workbook = openpyxl.load_workbook(io.BytesIO(app.session_state['test_export']))
+        worksheet = workbook.worksheets[0]
+        self.assertIsNone(worksheet['C6'].value)
+        self.assertEqual(worksheet['B6'].value, '=IF(C6="","",C6-D6)')
 
     def test_inss_sozinho_e_no_excel_geral(self):
         app = self.iniciar()

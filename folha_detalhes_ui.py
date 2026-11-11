@@ -2,13 +2,22 @@
 
 import pandas as pd
 import streamlit as st
+from hashlib import sha256
+from pathlib import Path
 
+import folha_pdf
 from folha_pdf import extrair_detalhes_pdf
 
 
 @st.cache_data(show_spinner=False)
-def carregar_detalhes(conteudo):
+def _carregar_detalhes(conteudo, versao_extrator):
     return extrair_detalhes_pdf(conteudo)
+
+
+def carregar_detalhes(conteudo):
+    # O Streamlit não invalida o cache quando muda uma função importada.
+    versao = sha256(Path(folha_pdf.__file__).read_bytes()).hexdigest()
+    return _carregar_detalhes(conteudo, versao)
 
 
 def mostrar_detalhes_folha(arquivo):

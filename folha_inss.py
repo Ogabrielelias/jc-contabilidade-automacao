@@ -9,6 +9,9 @@ from decimal import Decimal, InvalidOperation
 import fitz
 import pandas as pd
 from openpyxl import load_workbook
+from xlsxwriter.utility import xl_rowcol_to_cell
+
+from folha_formulas_excel import filial_excel, valor_excel
 
 VALOR = r"-?[\d.]+,\d{2}"
 UNIDADE = r"(\d{4})\s*-\s*Buffon\s+(\d+)"
@@ -147,7 +150,7 @@ def tabela_inss(dados):
     return pd.DataFrame(linhas)
 
 
-def escrever_inss(writer, dados):
+def escrever_inss(writer, dados, resumo_salarios=None):
     tabela = tabela_inss(dados)
     tabela.to_excel(writer, sheet_name="Resumo INSS", index=False, startrow=3)
     workbook, worksheet = writer.book, writer.sheets['Resumo INSS']
@@ -157,7 +160,33 @@ def escrever_inss(writer, dados):
     total = workbook.add_format({'bold': True, 'num_format': '#,##0.00', 'align': 'right', 'valign': 'vcenter'})
     worksheet.merge_range('A1:G1', 'COMERCIAL BUFFON COMB. E TRANSPORTES LTDA', titulo)
     worksheet.merge_range('A2:G2', f"Com Buffon / INSS - {dados['competencia']}", subtitulo)
-    worksheet.set_column('B:D', None, moeda)
+    cabecalho = workbook.add_format({'bold': True, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True, 'border': 1})
+    for coluna, credito, historico in ((3, '144.9 INSS A PG', 20),
+                                       (4, '54.0 SAL. FAM', 84),
+                                       (5, '53.1 SAL. MAT', 85)):
+        worksheet.write(2, coluna, f'D-270.4 INSS\nC-{credito}\nH-{historico}', cabecalho)
+    worksheet.set_row(2, 48)
+    worksheet.write(3, 4, 'Salário-família', cabecalho)
+    worksheet.write(3, 5, 'Salário-maternidade', cabecalho)
+    worksheet.set_column('B:F', None, moeda)
+    origens = {}
+    if resumo_salarios is not None:
+        for linha, (_, row) in enumerate(resumo_salarios.iterrows(), 5):
+            origens[filial_excel(row['Filial'])] = (linha, row)
+    totais_beneficios = {4: Decimal(0), 5: Decimal(0)}
+    for linha, codigo in enumerate(sorted(dados['registros']), 4):
+        filial = 'Matriz' if codigo == 1001 else f'Filial {codigo-1001}'
+        for coluna, nome in ((4, 'D-54.0 - Sal. Fam.'), (5, 'D-53.1 - Sal. Mat.')):
+            if filial in origens and nome in resumo_salarios.columns:
+                origem, row = origens[filial]
+                celula = xl_rowcol_to_cell(origem, resumo_salarios.columns.get_loc(nome))
+                valor = valor_excel(row[nome])
+                worksheet.write_formula(linha, coluna, f"='Resumo Salários'!{celula}", moeda, valor)
+                totais_beneficios[coluna] += Decimal(str(valor))
+            else:
+                worksheet.write_blank(linha, coluna, None, moeda)
+    for coluna, letra in ((4, 'E'), (5, 'F')):
+        worksheet.write_formula(len(tabela)+3, coluna, f'=SUM({letra}5:{letra}{len(tabela)+3})' if len(tabela) > 1 else '=0', total, float(totais_beneficios[coluna]))
     worksheet.set_row(len(tabela)+3, None, total)
     for linha in range(4, len(tabela)+3):
         n = linha+1

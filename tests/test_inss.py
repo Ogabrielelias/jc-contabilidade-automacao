@@ -16,6 +16,27 @@ ODS = ROOT / 'Buffon Inss Desconto Empregados 09.2026 (1).ods'
 
 
 class InssTest(unittest.TestCase):
+    def test_beneficios_vinculados_por_filial_e_sem_duplicar_totais(self):
+        dados = {'competencia': '10/2026', 'avisos': [], 'registros': {
+            1001: {'Parte empresa': 10, 'Desconto empregados': 2, 'Total INSS': 12},
+            1003: {'Parte empresa': 20, 'Desconto empregados': 3, 'Total INSS': 23},
+        }}
+        resumo = pd.DataFrame([
+            ['Filial 2', 'R$ 12,34', 'R$ 200,00'],
+            ['Matriz', 'R$ 0,00', 'R$ 100,00'],
+            ['T. GERAL', 'R$ 12,34', 'R$ 300,00'],
+        ], columns=['Filial', 'D-54.0 - Sal. Fam.', 'D-53.1 - Sal. Mat.'])
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            escrever_inss(writer, dados, resumo)
+        formulas = openpyxl.load_workbook(io.BytesIO(output.getvalue()))['Resumo INSS']
+        valores = openpyxl.load_workbook(io.BytesIO(output.getvalue()), data_only=True)['Resumo INSS']
+        self.assertEqual(formulas['E5'].value, "='Resumo Salários'!B7")
+        self.assertEqual(formulas['F6'].value, "='Resumo Salários'!C6")
+        self.assertEqual(valores['E7'].value, 12.34)
+        self.assertEqual(valores['F7'].value, 300)
+        self.assertEqual(valores['D7'].value, 35)
+
     def xlsx(self, abas):
         workbook = openpyxl.Workbook()
         workbook.remove(workbook.active)

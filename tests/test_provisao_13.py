@@ -41,6 +41,8 @@ class ProvisaoTests(unittest.TestCase):
             escrever_provisao_13(writer, self.dados)
         wb = openpyxl.load_workbook(io.BytesIO(output.getvalue()))
         ws = wb['Provisão 13º']
+        for coluna, historico in (('E', 'H-25'), ('F', 'H-106'), ('H', 'H-111')):
+            self.assertTrue(ws[coluna+'5'].value.endswith('\n'+historico))
         self.assertNotIn('Base Provisão', wb.sheetnames)
         self.assertEqual(ws['E11'].value, '=32268.82-1429.89')
         self.assertEqual(ws['F11'].value, '=9407.35+2566.34')
