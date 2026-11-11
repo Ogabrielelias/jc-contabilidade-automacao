@@ -6,6 +6,27 @@ from folha_pdf import extrair_detalhes_pdf, extrair_resumos_paginas, extrair_res
 
 
 class ResumosPdfTest(unittest.TestCase):
+    def test_empregados_gerais_prevalecem_sobre_ativos_em_outra_pagina(self):
+        linhas = extrair_resumos_paginas([
+            '1004 - Buffon 04\nCONTRATOS ATIVOS: 54',
+            '1004 - Buffon 04\nTotal de Empregado – Geral, contratado pela CLT: 53\n'
+            'Total de Empregado – Aprendiz: 3\n'
+            'Total de Contribuinte individual – Diretor não empregado, sem FGTS: 1',
+            '1005 - Buffon 05\nCONTRATOS ATIVOS: 2\nTotal de Empregado – Geral: 0',
+            'Total Da Empresa: 1001\nCONTRATOS ATIVOS: 999',
+            'Total de Empregado – Geral: 999',
+        ])
+        self.assertEqual([r['Func.'] for r in linhas], [53, 0])
+
+    def test_funcionarios_outubro_conferem_com_categoria_do_pdf(self):
+        linhas = self.ler_exemplo('Buffon Salário 10 2026.pdf')
+        self.assertEqual(len(linhas), 116)
+        self.assertEqual(sum(r['Func.'] for r in linhas), 2641)
+        por_filial = {r['Filial']: r['Func.'] for r in linhas}
+        self.assertEqual(por_filial['Filial 3'], 53)
+        self.assertEqual(por_filial['Filial 4'], 51)
+        self.assertEqual(por_filial['Filial 99'], 198)
+
     def test_continuacoes_sem_duplicar_ou_incluir_total_empresa(self):
         linhas = extrair_resumos_paginas([
             "Estabelecimento: 1026 - Buffon 26\nVencimento",

@@ -23,6 +23,13 @@ def detectar_filial(texto):
 
 
 def detectar_funcionarios(texto, incluir_afastados=False):
+    # No layout atual, contratos ativos misturam categorias e não representam
+    # o total de Empregado – Geral solicitado para a coluna de funcionários.
+    empregados = re.search(
+        r'Total de Empregado\s*[–—-]\s*Geral\b[^:]*:\s*(\d+)', texto, re.I
+    )
+    if empregados:
+        return int(empregados[1])
     antigo = re.search(r"Nesta\s+Folha\s*:?\s*(\d+)", texto, re.I)
     if antigo:
         return int(antigo[1])
@@ -50,9 +57,10 @@ def detectar_salario(texto):
 def extrair_resumos_paginas(textos, incluir_afastados=False):
     """Uma linha por filial, inclusive quando seus totais estão na próxima página."""
     resultados = {}
+    textos_por_filial = {}
     filial_atual = None
     for texto in textos:
-        if re.search(r"RESUMO\s+DO\s+PERÍODO|Totais\s+da\s+Empresa:", texto, re.I):
+        if re.search(r"RESUMO\s+DO\s+PERÍODO|(?:Total|Totais)\s+da\s+Empresa:", texto, re.I):
             filial_atual = None
             continue
 
@@ -65,13 +73,15 @@ def extrair_resumos_paginas(textos, incluir_afastados=False):
             continue
 
         registro = resultados[filial_atual]
-        funcionarios = detectar_funcionarios(texto, incluir_afastados)
+        textos_por_filial.setdefault(filial_atual, []).append(texto)
         fgts = detectar_salario(texto)
-        if funcionarios is not None and registro["Func."] is None:
-            registro["Func."] = funcionarios
         if fgts is not None and "Salário" not in registro:
             registro["Salário"] = fgts
 
+    for filial, registro in resultados.items():
+        registro['Func.'] = detectar_funcionarios(
+            '\n'.join(textos_por_filial.get(filial, [])), incluir_afastados
+        )
     return list(resultados.values())
 
 

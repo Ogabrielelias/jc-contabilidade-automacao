@@ -26,6 +26,10 @@ class AppPdfTest(unittest.TestCase):
         wb = openpyxl.load_workbook(io.BytesIO(app.session_state['test_export']), data_only=True)
         self.assertAlmostEqual(wb['FGTS e Honorários']['B5'].value, 13675.37, places=2)
         self.assertEqual(app.session_state['test_export_name'], 'resumo_salarios_buffon_10-2026.xlsx')
+        ws = wb['Resumo Salários']
+        coluna = next(c.column for c in ws[5] if c.value == 'Func.')
+        linha = next(c.row for c in ws['A'] if c.value == 'T. GERAL')
+        self.assertEqual(ws.cell(linha, coluna).value, 2641)
 
     def test_formulas_recalculam_salarios_e_totais(self):
         from tests.support.calcular_excel import calcular

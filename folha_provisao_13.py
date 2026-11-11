@@ -47,9 +47,14 @@ def extrair_provisao_13(conteudo):
                 if not anteriores:
                     raise ValueError(f'Saldo anterior ausente na página {pagina}.')
                 inicio = max(r.y0 for r in anteriores)
+                # O espaçamento varia entre versões do relatório. O próximo
+                # saldo anterior delimita outro bloco; uma altura fixa pode
+                # cortar o débito ou incluir os totais da classificação seguinte.
+                proximos = [r.y0 for r in page.search_for(ROTULOS[0]) if r.y0 > inicio]
+                fim = min(proximos) if proximos else page.rect.height
                 linhas = {}
                 for rotulo in ROTULOS:
-                    candidatos = [r for r in page.search_for(rotulo) if inicio-1 <= r.y0 <= inicio+85]
+                    candidatos = [r for r in page.search_for(rotulo) if inicio-1 <= r.y0 < fim]
                     if len(candidatos) != 1:
                         raise ValueError(f'{rotulo} ausente ou ambíguo na página {pagina}.')
                     rect = candidatos[0]

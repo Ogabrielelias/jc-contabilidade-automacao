@@ -73,6 +73,28 @@ class ProvisaoTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, mensagem):
                         extrair_provisao_13(doc.tobytes())
 
+    def test_totais_com_espacamento_ampliado(self):
+        with fitz.open(PDF) as original:
+            with fitz.open() as ampliado:
+                rect = original[0].rect
+                page = ampliado.new_page(width=rect.width * 3, height=rect.height * 3)
+                page.show_pdf_page(page.rect, original, 0)
+                dados = extrair_provisao_13(ampliado.tobytes())
+        self.assertEqual(dados['registros']['Matriz']['valores'], self.dados['registros']['Matriz']['valores'])
+
+
+class ProvisaoOutubroTests(unittest.TestCase):
+    def test_pdf_outubro(self):
+        caminho = ROOT / 'Provisão de 13º Salário 10 2026.pdf'
+        if not caminho.exists():
+            self.skipTest('PDF de outubro ausente')
+        dados = extrair_provisao_13(caminho.read_bytes())
+        self.assertEqual(dados['competencia'], '10/2026')
+        self.assertEqual(len(dados['registros']), 116)
+        self.assertEqual(dados['registros']['Matriz']['valores'], list(map(Decimal, [
+            '175528.40', '14015.53', '5570.67', '0', '433.60', '194681.00',
+        ])))
+
 
 if __name__ == '__main__':
     unittest.main()
