@@ -111,7 +111,7 @@ def _eventos_layout_lado_a_lado(palavras, contexto, pagina, texto):
         # O consolidado da empresa usa um relatório próprio e seus valores já
         # aparecem nos totais; não o misture com os eventos das filiais.
         return []
-    if not any(re.fullmatch(r"\d{8}", w[4]) and w[0] >= 280 for w in palavras):
+    if not any(re.fullmatch(r"\d{7,8}", w[4]) and w[0] >= 280 for w in palavras):
         return None
     cabecalhos_base = [
         y for y, linha in por_linha
@@ -123,7 +123,7 @@ def _eventos_layout_lado_a_lado(palavras, contexto, pagina, texto):
     eventos = []
 
     for y, palavras_linha in por_linha:
-        codigos = [w for w in palavras_linha if re.fullmatch(r"\d{8}", w[4])]
+        codigos = [w for w in palavras_linha if re.fullmatch(r"\d{7,8}", w[4])]
         for codigo in codigos:
             esquerdo = codigo[0] < 300
             faixa_valores = (lambda w: 180 < w[0] < 300) if esquerdo else (lambda w: w[0] >= 450)
@@ -139,7 +139,7 @@ def _eventos_layout_lado_a_lado(palavras, contexto, pagina, texto):
             tipo = "Base" if y >= inicio_bases else ("Vencimento" if esquerdo else "Desconto")
             normalizados = [w[4].strip("()") for w in sorted(valores, key=lambda w: w[0])]
             eventos.append({
-                **contexto, "Tipo": tipo, "Código": codigo[4],
+                **contexto, "Tipo": tipo, "Código": codigo[4].zfill(8),
                 "Descrição": descricao, "Horas/QTD": normalizados[0],
                 "Valor": normalizados[1], "Página": pagina,
             })
@@ -223,12 +223,12 @@ def extrair_detalhes_pdf(conteudo):
                 tipo = "Desconto"
             elif re.fullmatch(r"Bases?", linha, re.I):
                 tipo = "Base"
-            evento = re.fullmatch(r"(\d{8})\s*-\s*(.+)", linha) if eventos_colunas is None else None
+            evento = re.fullmatch(r"(\d{7,8})\s*-\s*(.+)", linha) if eventos_colunas is None else None
             if evento:
                 valores = []
                 for seguinte in linhas[i + 1:]:
                     seguinte = seguinte.strip()
-                    if re.fullmatch(r"(?:Vencimento|Provento|Desconto|Base)s?", seguinte, re.I) or re.fullmatch(r"\d{8}\s*-\s*.+", seguinte):
+                    if re.fullmatch(r"(?:Vencimento|Provento|Desconto|Base)s?", seguinte, re.I) or re.fullmatch(r"\d{7,8}\s*-\s*.+", seguinte):
                         break
                     valores.extend(re.findall(numero, seguinte))
                     if len(valores) >= 2:
@@ -236,7 +236,7 @@ def extrair_detalhes_pdf(conteudo):
                 if tipo is None or len(valores) != 2:
                     raise ValueError(f"Evento {evento[1]} incompleto na página {pagina}.")
                 dados["eventos"].append({
-                    **contexto, "Tipo": tipo, "Código": evento[1],
+                    **contexto, "Tipo": tipo, "Código": evento[1].zfill(8),
                     "Descrição": evento[2], "Horas/QTD": valores[0].strip(),
                     "Valor": valores[1].strip(), "Página": pagina,
                 })

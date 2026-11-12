@@ -6,6 +6,21 @@ from folha_pdf import extrair_detalhes_pdf, extrair_resumos_paginas, extrair_res
 
 
 class ResumosPdfTest(unittest.TestCase):
+    def test_evento_sete_digitos_outubro_sem_duplicar_continuacao(self):
+        caminho = Path(__file__).resolve().parents[1] / "Buffon Salário 10 2026.pdf"
+        if not caminho.exists():
+            self.skipTest("PDF de exemplo não disponível neste checkout")
+        dados = extrair_detalhes_pdf(caminho.read_bytes())
+        eventos = [e for e in dados["eventos"] if e["Código"] == "00003202"]
+        self.assertEqual(len(eventos), 1)
+        evento = eventos[0]
+        self.assertEqual(evento["Unidade"], "Filial 5")
+        self.assertEqual(evento["Tipo"], "Vencimento")
+        self.assertEqual(evento["Descrição"], "Diferença Adc. Quebra de Caixa")
+        self.assertEqual(evento["Horas/QTD"], "0,00")
+        self.assertEqual(evento["Valor"], "182,00")
+        self.assertEqual(evento["Página"], 15)
+
     def test_empregados_gerais_prevalecem_sobre_ativos_em_outra_pagina(self):
         linhas = extrair_resumos_paginas([
             '1004 - Buffon 04\nCONTRATOS ATIVOS: 54',
